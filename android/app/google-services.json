@@ -1,0 +1,32 @@
+{
+  "project_info": {
+    "project_number": "465928590989",
+    "firebase_url": "https://bites-and-brew-506111-default-rtdb.firebaseio.com",
+    "project_id": "bites-and-brew-506111",
+    "storage_bucket": "bites-and-brew-506111.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:465928590989:android:0bee4088f7c084d13db4c4",
+        "android_client_info": {
+          "package_name": "jam.cafe.and.brews.cafe_and_brews"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9bfbnAP-EunfYQhJ7MzRUiMRxWsYABh0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

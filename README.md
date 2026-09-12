@@ -1,4 +1,4 @@
-# BITES AND BREW
+# Haven & Co.
 
 drinks and snacks POS
 

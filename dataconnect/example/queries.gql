@@ -1,0 +1,44 @@
+mutation CreateProducts @auth(level: USER) {
+  product_insertMany(data: [
+    { name: "Laptop", price: 999.99, stockQuantity: 10, sku: "LP-001" },
+    { name: "Mouse", price: 25.50, stockQuantity: 50, sku: "MS-001" }
+  ])
+}
+
+mutation CreateCustomers @auth(level: USER) {
+  customer_insert(data: { name: "John Doe", email: "john@example.com" })
+}
+
+mutation CreateStores @auth(level: USER) {
+  store_insert(data: { name: "Main St Store", location: "123 Main St" })
+}
+
+mutation CreateOrders @transaction @auth(level: USER) {
+  order_insert(data: {
+    totalAmount: 1025.49,
+    timestamp: "2023-10-27T10:00:00Z",
+    status: "PENDING"
+  })
+}
+
+mutation UpdateProduct($id: UUID!, $price: Float) @auth(level: USER) {
+  product_update(key: { id: $id }, data: { price: $price })
+}
+
+mutation DeleteProduct($id: UUID!) @auth(level: USER) {
+  product_delete(key: { id: $id })
+}
+
+query GetProduct($id: UUID!) @auth(level: PUBLIC, insecureReason: "Public product catalog") {
+  product(id: $id) { name price sku }
+}
+
+query ListAllProducts @auth(level: PUBLIC, insecureReason: "Public product catalog") {
+  products { name price sku }
+}
+
+query ListCustomerOrders @auth(level: USER) {
+  orders(where: { customer: { id: { eq_expr: "auth.uid" } } }) {
+    totalAmount status
+  }
+}

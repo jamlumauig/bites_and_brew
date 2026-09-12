@@ -1,0 +1,22 @@
+mutation SeedData @transaction {
+  customer_insertMany(data: [
+    { name: "Alice Johnson", email: "alice@example.com", phoneNumber: "555-0101", loyaltyPoints: 100 },
+    { name: "Bob Smith", email: "bob@example.com", phoneNumber: "555-0102", loyaltyPoints: 50 },
+    { name: "Charlie Brown", email: "charlie@example.com", phoneNumber: "555-0103", loyaltyPoints: 200 }
+  ])
+  product_insertMany(data: [
+    { name: "Laptop", price: 999.99, stockQuantity: 10, sku: "LAP-001", description: "High performance laptop" },
+    { name: "Mouse", price: 25.50, stockQuantity: 100, sku: "MOU-001", description: "Wireless mouse" },
+    { name: "Keyboard", price: 45.00, stockQuantity: 50, sku: "KEY-001", description: "Mechanical keyboard" }
+  ])
+  store_insertMany(data: [
+    { name: "Downtown Store", location: "123 Main St", managerName: "Sarah Connor" },
+    { name: "Westside Hub", location: "456 Oak Ave", managerName: "Kyle Reese" },
+    { name: "Airport Kiosk", location: "789 Air Rd", managerName: "John Doe" }
+  ])
+  order_insertMany(data: [
+    { totalAmount: 1025.49, timestamp: "2023-10-01T10:00:00Z", status: "COMPLETED" },
+    { totalAmount: 70.50, timestamp: "2023-10-02T11:30:00Z", status: "PENDING" },
+    { totalAmount: 25.50, timestamp: "2023-10-03T14:15:00Z", status: "SHIPPED" }
+  ])
+}
