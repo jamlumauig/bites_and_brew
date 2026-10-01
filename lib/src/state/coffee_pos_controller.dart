@@ -8,9 +8,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:printing/printing.dart';
+
 import '../data/coffee_pos_repository.dart';
 import '../domain/checkout_calculator.dart';
 import '../domain/coffee_pos_models.dart';
+import '../utils/printing/platform_adapters/printer_resolver.dart';
 import '../utils/receipt_printer.dart' as receipt_printer;
 
 class CoffeePosController extends ChangeNotifier {
@@ -35,6 +38,7 @@ class CoffeePosController extends ChangeNotifier {
   List<ShiftSummary> _activeShifts = <ShiftSummary>[];
   double _todaySales = 0;
   double _discountAmount = 0;
+  bool _vatEnabled = true;
   double _taxRate = 0.12;
   double _serviceChargeRate = 0.0;
   double _cashReceived = 0;
@@ -49,17 +53,27 @@ class CoffeePosController extends ChangeNotifier {
   String _receiptFooter = 'Visit us again soon.';
   String _currencyCode = 'PHP';
   String _currencySymbol = '₱';
-  String _printerName = 'Kitchen Printer';
+  String _printerName = 'GEZHI_micro_printer';
   String _printerUrl = '';
+  String _kitchenPrinterName = '';
+  String _kitchenPrinterUrl = '';
   bool _autoPrintReceipts = true;
+  String _thermalTransport = 'Direct print (no prompt)';
+  bool _thermalWebKiosk = false;
+  int _thermalPaperWidth = 80;
+  int _thermalFeedLines = 2;
+  bool _thermalAutoCut = true;
+  bool _thermalOpenCashDrawer = false;
   bool _compactReceiptStyle = false;
   bool _showBadges = true;
   bool _highContrastMode = false;
+  bool _isCheckingOut = false;
   final String _shiftId = 'shift-001';
   static const String _resetSnapshotPreferenceKey = 'bites_brew_reset_snapshot';
   static const String _legacyResetFlagPreferenceKey = 'bites_brew_reset_mode';
   StreamSubscription<DatabaseEvent>? _realtimeSnapshotSubscription;
   StreamSubscription<DatabaseEvent>? _sharedCatalogSubscription;
+  StreamSubscription<DatabaseEvent>? _sharedOrdersSubscription;
   Future<void> _persistenceQueue = Future<void>.value();
   bool _needsRealtimeDatabaseMigration = false;
 
@@ -84,13 +98,18 @@ class CoffeePosController extends ChangeNotifier {
   DatabaseReference get _sharedCatalogReference =>
       FirebaseDatabase.instance.ref('store/catalog');
 
+  DatabaseReference get _sharedOrdersReference =>
+      FirebaseDatabase.instance.ref('store/orders');
+
   bool get isLoading => _isLoading;
+  bool get isCheckingOut => _isCheckingOut;
   Role get role => _role;
   int get selectedCategoryIndex => _selectedCategoryIndex;
   String? get activeProductId => _activeProductId;
   List<CartItem> get cart => List.unmodifiable(_cart);
   StoreBootstrap? get bootstrap => _bootstrap;
   double get discountAmount => _discountAmount;
+  bool get vatEnabled => _vatEnabled;
   double get taxRate => _taxRate;
   double get serviceChargeRate => _serviceChargeRate;
   double get cashReceived => _cashReceived;
@@ -107,7 +126,15 @@ class CoffeePosController extends ChangeNotifier {
   String get currencySymbol => _currencySymbol;
   String get printerName => _printerName;
   String get printerUrl => _printerUrl;
+  String get kitchenPrinterName => _kitchenPrinterName;
+  String get kitchenPrinterUrl => _kitchenPrinterUrl;
   bool get autoPrintReceipts => _autoPrintReceipts;
+  String get thermalTransport => _thermalTransport;
+  bool get thermalWebKiosk => _thermalWebKiosk;
+  int get thermalPaperWidth => _thermalPaperWidth;
+  int get thermalFeedLines => _thermalFeedLines;
+  bool get thermalAutoCut => _thermalAutoCut;
+  bool get thermalOpenCashDrawer => _thermalOpenCashDrawer;
   bool get compactReceiptStyle => _compactReceiptStyle;
   bool get showBadges => _showBadges;
   bool get highContrastMode => _highContrastMode;
@@ -135,7 +162,20 @@ class CoffeePosController extends ChangeNotifier {
         .toList(growable: false),
   );
   List<Product> get products => List.unmodifiable(_products);
-  List<ModifierGroup> get modifierGroups => List.unmodifiable(_modifierGroups);
+
+  /// Keeps current menus compatible with catalogs that used the former
+  /// three-option `size` group.
+  List<ModifierGroup> get modifierGroups {
+    final groupsById = <String, ModifierGroup>{
+      for (final group in _modifierGroups)
+        if (group.id != 'size') group.id: group,
+    };
+    for (final group in StoreBootstrap.sample().modifierGroups) {
+      groupsById.putIfAbsent(group.id, () => group);
+    }
+    return List.unmodifiable(groupsById.values);
+  }
+
   List<InventoryHealth> get inventoryHealth =>
       List.unmodifiable(_inventoryHealth);
   List<OrderQueueRecord> get activeOrders => List.unmodifiable(_activeOrders);
@@ -168,9 +208,13 @@ class CoffeePosController extends ChangeNotifier {
     taxRate: _taxRate,
     serviceChargeRate: _serviceChargeRate,
     cashReceived: _cashReceived,
+    vatEnabled: _vatEnabled,
   );
 
   bool get canCheckout {
+    if (_isCheckingOut) {
+      return false;
+    }
     final summary = checkoutSummary;
     if (!summary.isValid) {
       return false;
@@ -214,9 +258,24 @@ class CoffeePosController extends ChangeNotifier {
     } else if (_role == Role.admin) {
       await _saveSharedCatalog();
     }
+    final sharedOrders = await _loadSharedOrders();
+    if (sharedOrders != null) {
+      _applySharedOrders(sharedOrders);
+      await _saveLocalStateSnapshot(exportStateJson(pretty: false));
+    } else {
+      await _saveSharedOrders();
+    }
+    // Auto-configure thermal printer if running with demo/legacy defaults
+    if (_printerName == 'Kitchen Printer' ||
+        _printerName == 'GEZHI_micro_printer' ||
+        _printerName.isEmpty ||
+        _thermalTransport == 'System dialog') {
+      await autoConfigurePrinter();
+    }
     _isLoading = false;
     _startFirebaseStateSubscription();
     _startSharedCatalogSubscription();
+    _startSharedOrdersSubscription();
     notifyListeners();
   }
 
@@ -261,6 +320,13 @@ class CoffeePosController extends ChangeNotifier {
     'updatedAt': ServerValue.timestamp,
   };
 
+  Map<String, dynamic> _sharedOrdersJson() => <String, dynamic>{
+    'recentOrders': _recentOrders.map((item) => item.toJson()).toList(),
+    'activeOrders': _activeOrders.map((item) => item.toJson()).toList(),
+    'todaySales': _todaySales,
+    'updatedAt': ServerValue.timestamp,
+  };
+
   void _applySharedCatalog(Map<String, dynamic> json) {
     _categories = _readRealtimeModels(json['categories'], Category.fromJson);
     _products = _readRealtimeModels(json['products'], Product.fromJson);
@@ -269,6 +335,18 @@ class CoffeePosController extends ChangeNotifier {
       ModifierGroup.fromJson,
     );
     _ensureDefaultCategories();
+  }
+
+  void _applySharedOrders(Map<String, dynamic> json) {
+    _recentOrders = _readRealtimeModels(
+      json['recentOrders'],
+      OrderRecord.fromJson,
+    );
+    _activeOrders = _readRealtimeModels(
+      json['activeOrders'],
+      OrderQueueRecord.fromJson,
+    );
+    _todaySales = _numberFromJson(json['todaySales']);
   }
 
   List<T> _readRealtimeModels<T>(
@@ -319,12 +397,23 @@ class CoffeePosController extends ChangeNotifier {
       'currencySymbol': _currencySymbol,
       'printerName': _printerName,
       'printerUrl': _printerUrl,
+      'kitchenPrinterName': _kitchenPrinterName,
+      'kitchenPrinterUrl': _kitchenPrinterUrl,
       'autoPrintReceipts': _autoPrintReceipts,
+      'thermalTransport': _thermalTransport,
+      'thermalWebKiosk': _thermalWebKiosk,
+      'thermalPaperWidth': _thermalPaperWidth,
+      'thermalFeedLines': _thermalFeedLines,
+      'thermalAutoCut': _thermalAutoCut,
+      'thermalOpenCashDrawer': _thermalOpenCashDrawer,
       'orderType': _orderType,
       'cashierName': _cashierName,
       'compactReceiptStyle': _compactReceiptStyle,
       'showBadges': _showBadges,
       'highContrastMode': _highContrastMode,
+      'vatEnabled': _vatEnabled,
+      'taxRate': _taxRate,
+      'serviceChargeRate': _serviceChargeRate,
     };
   }
 
@@ -336,16 +425,39 @@ class CoffeePosController extends ChangeNotifier {
     _receiptFooter = json['receiptFooter'] as String? ?? _receiptFooter;
     _currencyCode = json['currencyCode'] as String? ?? _currencyCode;
     _currencySymbol = json['currencySymbol'] as String? ?? _currencySymbol;
-    _printerName = json['printerName'] as String? ?? _printerName;
+    final loadedPrinterName = json['printerName'] as String?;
+    _printerName = (loadedPrinterName == null || loadedPrinterName == 'Kitchen Printer')
+        ? 'GEZHI_micro_printer'
+        : loadedPrinterName;
     _printerUrl = json['printerUrl'] as String? ?? _printerUrl;
+    _kitchenPrinterName = json['kitchenPrinterName'] as String? ?? _kitchenPrinterName;
+    _kitchenPrinterUrl = json['kitchenPrinterUrl'] as String? ?? _kitchenPrinterUrl;
     _autoPrintReceipts =
         json['autoPrintReceipts'] as bool? ?? _autoPrintReceipts;
+    final loadedTransport = json['thermalTransport'] as String?;
+    _thermalTransport = loadedTransport ?? _thermalTransport;
+    _thermalWebKiosk = json['thermalWebKiosk'] as bool? ?? _thermalWebKiosk;
+    final savedPaperWidth = json['thermalPaperWidth'] as int?;
+    _thermalPaperWidth = switch (savedPaperWidth) {
+      50 || 58 || 80 => (_printerName == 'GEZHI_micro_printer' && savedPaperWidth == 50)
+          ? 80
+          : savedPaperWidth!,
+      _ => _thermalPaperWidth,
+    };
+    _thermalFeedLines = json['thermalFeedLines'] as int? ?? _thermalFeedLines;
+    _thermalAutoCut = json['thermalAutoCut'] as bool? ?? _thermalAutoCut;
+    _thermalOpenCashDrawer =
+        json['thermalOpenCashDrawer'] as bool? ?? _thermalOpenCashDrawer;
     _orderType = json['orderType'] as String? ?? _orderType;
     _cashierName = json['cashierName'] as String? ?? _cashierName;
     _compactReceiptStyle =
         json['compactReceiptStyle'] as bool? ?? _compactReceiptStyle;
     _showBadges = json['showBadges'] as bool? ?? _showBadges;
     _highContrastMode = json['highContrastMode'] as bool? ?? _highContrastMode;
+    _vatEnabled = json['vatEnabled'] as bool? ?? _vatEnabled;
+    _taxRate = (json['taxRate'] as num?)?.toDouble() ?? _taxRate;
+    _serviceChargeRate =
+        (json['serviceChargeRate'] as num?)?.toDouble() ?? _serviceChargeRate;
   }
 
   Map<String, dynamic> exportState() {
@@ -356,6 +468,7 @@ class CoffeePosController extends ChangeNotifier {
       'session': <String, dynamic>{
         'cart': _cart.map((item) => item.toJson()).toList(growable: false),
         'discountAmount': _discountAmount,
+        'vatEnabled': _vatEnabled,
         'taxRate': _taxRate,
         'serviceChargeRate': _serviceChargeRate,
         'cashReceived': _cashReceived,
@@ -489,7 +602,7 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   ModifierGroup? modifierGroupById(String id) {
-    for (final group in _modifierGroups) {
+    for (final group in modifierGroups) {
       if (group.id == id) {
         return group;
       }
@@ -497,20 +610,75 @@ class CoffeePosController extends ChangeNotifier {
     return null;
   }
 
+  List<ModifierGroup> modifierGroupsForProduct(Product product) {
+    final groupIds = _modifierGroupIdsForProduct(product);
+    return groupIds
+        .map(modifierGroupById)
+        .whereType<ModifierGroup>()
+        .toList(growable: false);
+  }
+
+  List<String> _modifierGroupIdsForProduct(Product product) {
+    final groupIds = product.modifierGroupIds.isEmpty
+        ? defaultModifierGroupIdsForCategory(product.categoryId)
+        : product.modifierGroupIds;
+    if (_isDrinkCategory(product.categoryId)) {
+      return <String>[
+        'drink-size',
+        ...groupIds.where((id) => id != 'size' && id != 'drink-size'),
+      ];
+    }
+    if (_isSnackCategory(product.categoryId)) {
+      return <String>[
+        'snack-size',
+        ...groupIds.where((id) => id != 'size' && id != 'snack-size'),
+      ];
+    }
+    return groupIds;
+  }
+
+  bool _isDrinkCategory(String categoryId) {
+    final category = _categories
+        .where((item) => item.id == categoryId)
+        .firstOrNull;
+    return const <String>['coffee', 'shakes'].contains(categoryId) ||
+        const <String>['☕', '🧊', '🍵', '🥤'].contains(category?.icon);
+  }
+
+  bool _isSnackCategory(String categoryId) {
+    final category = _categories
+        .where((item) => item.id == categoryId)
+        .firstOrNull;
+    return categoryId == 'snacks' ||
+        const <String>[
+          '🥐',
+          '🍞',
+          '🍿',
+          '🥟',
+          '🍗',
+          '🍟',
+          '🍢',
+          '🧀',
+        ].contains(category?.icon);
+  }
+
   List<SelectedModifier> resolveDefaultModifiers(Product product) {
     final result = <SelectedModifier>[];
-    for (final groupId in product.modifierGroupIds) {
-      final group = modifierGroupById(groupId);
-      if (group == null || group.options.isEmpty) {
+    for (final group in modifierGroupsForProduct(product)) {
+      if (group.options.isEmpty) {
         continue;
       }
-      final option = group.options.first;
+      final option = group.options.firstWhere(
+        (opt) => opt.isDefault,
+        orElse: () => group.options.first,
+      );
       result.add(
         SelectedModifier(
           groupId: group.id,
           optionId: option.id,
           label: option.name,
           priceDelta: option.priceDelta,
+          isDefault: true,
         ),
       );
     }
@@ -518,18 +686,13 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   List<String> defaultModifierGroupIdsForCategory(String categoryId) {
-    switch (categoryId) {
-      case 'coffee':
-      case 'shakes':
-        return const <String>['size', 'milk', 'extras'];
-      case 'snacks':
-      case 'ala-carte':
-      case 'combos':
-      case 'desserts':
-        return const <String>[];
-      default:
-        return const <String>[];
+    if (_isDrinkCategory(categoryId)) {
+      return const <String>['drink-size', 'milk', 'extras'];
     }
+    if (_isSnackCategory(categoryId)) {
+      return const <String>['snack-size'];
+    }
+    return const <String>[];
   }
 
   void addCategory({required String name, required String icon}) {
@@ -860,19 +1023,55 @@ class CoffeePosController extends ChangeNotifier {
     _cashReceived = 0;
     _paymentType = PaymentType.card;
     _orderType = order.orderType.isEmpty ? 'Dine-in' : order.orderType;
-    _activeOrders.removeWhere((item) => item.id == order.id);
+    _activeOrders = _activeOrders
+        .where((item) => item.id != order.id)
+        .toList(growable: false);
     unawaited(_saveCurrentStateSnapshot());
+    unawaited(_saveSharedOrders());
     notifyListeners();
   }
 
-  void completeOrder(OrderQueueRecord order) {
-    _activeOrders.removeWhere((item) => item.id == order.id);
-    unawaited(_saveCurrentStateSnapshot());
+  Future<bool> completeOrder(OrderQueueRecord order) {
+    final index = _activeOrders.indexWhere((item) => item.id == order.id);
+    if (index == -1) {
+      return Future<bool>.value(false);
+    }
+    _activeOrders = List<OrderQueueRecord>.from(_activeOrders)..removeAt(index);
     notifyListeners();
+
+    // Do not block the UI on local or shared persistence. Both writes are
+    // durable best-effort work and can wait for Firebase connectivity.
+    unawaited(_saveCurrentStateSnapshot());
+    unawaited(_removeSharedActiveOrder(order.id));
+    return Future<bool>.value(true);
   }
 
   void updateDiscount(double value) {
     _discountAmount = value.clamp(0, double.infinity);
+    unawaited(_saveCurrentStateSnapshot());
+    notifyListeners();
+  }
+
+  void updateVatEnabled(bool value) {
+    _vatEnabled = value;
+    unawaited(_saveCurrentStateSnapshot());
+    notifyListeners();
+  }
+
+  void updateTaxSettings({
+    bool? vatEnabled,
+    double? taxRate,
+    double? serviceChargeRate,
+  }) {
+    if (vatEnabled != null) {
+      _vatEnabled = vatEnabled;
+    }
+    if (taxRate != null) {
+      _taxRate = taxRate.clamp(0, 1);
+    }
+    if (serviceChargeRate != null) {
+      _serviceChargeRate = serviceChargeRate.clamp(0, 1);
+    }
     unawaited(_saveCurrentStateSnapshot());
     notifyListeners();
   }
@@ -946,14 +1145,74 @@ class CoffeePosController extends ChangeNotifier {
     required String printerName,
     required String printerUrl,
     required bool autoPrintReceipts,
+    String? thermalTransport,
+    int? thermalPaperWidth,
+    int? thermalFeedLines,
+    bool? thermalAutoCut,
+    bool? thermalOpenCashDrawer,
+    bool? thermalWebKiosk,
   }) {
     _printerName = printerName.trim().isEmpty
         ? _printerName
         : printerName.trim();
     _printerUrl = printerUrl.trim();
     _autoPrintReceipts = autoPrintReceipts;
+    _thermalTransport = thermalTransport ?? _thermalTransport;
+    _thermalPaperWidth = switch (thermalPaperWidth) {
+      0 || 50 || 58 || 80 => thermalPaperWidth!,
+      _ => _thermalPaperWidth,
+    };
+    _thermalFeedLines = (thermalFeedLines ?? _thermalFeedLines)
+        .clamp(0, 8)
+        .toInt();
+    _thermalAutoCut = thermalAutoCut ?? _thermalAutoCut;
+    _thermalOpenCashDrawer = thermalOpenCashDrawer ?? _thermalOpenCashDrawer;
+    _thermalWebKiosk = thermalWebKiosk ?? _thermalWebKiosk;
     unawaited(_saveCurrentStateSnapshot());
     notifyListeners();
+  }
+
+  /// Returns the effective paper width, resolving 0 (AUTO) using printer hints or safe 80mm fallback.
+  int get effectiveThermalPaperWidth {
+    if (_thermalPaperWidth == 58 || _thermalPaperWidth == 80 || _thermalPaperWidth == 50) {
+      return _thermalPaperWidth;
+    }
+    final lower = _printerName.toLowerCase();
+    if (lower.contains('58') || lower.contains('2inch') || lower.contains('58mm')) {
+      return 58;
+    }
+    return 80;
+  }
+
+  /// Automatically discovers connected printers, picks the best thermal/default printer,
+  /// and configures roll width, Direct Print (no prompt), and auto-print enabled.
+  /// Preserves intentional manual 58mm or 80mm roll selection unless [force] is true.
+  Future<bool> autoConfigurePrinter({bool force = false}) async {
+    try {
+      final printers = await Printing.listPrinters();
+      if (printers.isEmpty) return false;
+      final detected = PrinterResolver.autoDetectPrinter(printers);
+      if (detected != null) {
+        _printerName = detected.name;
+        _printerUrl = detected.url;
+        _thermalTransport = 'Direct print (no prompt)';
+        if (force || _thermalPaperWidth == 0) {
+          final lower = detected.name.toLowerCase();
+          if (lower.contains('58') || lower.contains('2inch') || lower.contains('58mm')) {
+            _thermalPaperWidth = 58;
+          } else {
+            _thermalPaperWidth = 80;
+          }
+        }
+        _autoPrintReceipts = true;
+        unawaited(_saveCurrentStateSnapshot());
+        notifyListeners();
+        return true;
+      }
+    } catch (_) {
+      // In test/mock environments or platforms without printing support, ignore safely.
+    }
+    return false;
   }
 
   void updatePreferences({
@@ -994,8 +1253,10 @@ class CoffeePosController extends ChangeNotifier {
     _receiptFooter = 'Visit us again soon.';
     _currencyCode = 'PHP';
     _currencySymbol = '₱';
-    _printerName = 'Kitchen Printer';
+    _printerName = 'GEZHI_micro_printer';
     _autoPrintReceipts = true;
+    _thermalTransport = 'Direct print (no prompt)';
+    _thermalPaperWidth = 80;
     _compactReceiptStyle = false;
     _showBadges = true;
     _highContrastMode = false;
@@ -1044,8 +1305,10 @@ class CoffeePosController extends ChangeNotifier {
     _receiptFooter = 'Visit us again soon.';
     _currencyCode = 'PHP';
     _currencySymbol = '₱';
-    _printerName = 'Kitchen Printer';
+    _printerName = 'GEZHI_micro_printer';
     _autoPrintReceipts = true;
+    _thermalTransport = 'Direct print (no prompt)';
+    _thermalPaperWidth = 80;
     _compactReceiptStyle = false;
     _showBadges = true;
     _highContrastMode = false;
@@ -1075,8 +1338,10 @@ class CoffeePosController extends ChangeNotifier {
     _receiptFooter = 'Visit us again soon.';
     _currencyCode = 'PHP';
     _currencySymbol = '₱';
-    _printerName = 'Kitchen Printer';
+    _printerName = 'GEZHI_micro_printer';
     _autoPrintReceipts = true;
+    _thermalTransport = 'Direct print (no prompt)';
+    _thermalPaperWidth = 80;
     _compactReceiptStyle = false;
     _showBadges = true;
     _highContrastMode = false;
@@ -1189,6 +1454,21 @@ class CoffeePosController extends ChangeNotifier {
     }
   }
 
+  Future<Map<String, dynamic>?> _loadSharedOrders() async {
+    if (Firebase.apps.isEmpty || _currentUserId == null) {
+      return null;
+    }
+    try {
+      final event = await _sharedOrdersReference.once().timeout(
+        const Duration(seconds: 3),
+      );
+      final value = event.snapshot.value;
+      return value is Map ? Map<String, dynamic>.from(value) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void _startSharedCatalogSubscription() {
     _sharedCatalogSubscription?.cancel();
     if (Firebase.apps.isEmpty || _currentUserId == null) {
@@ -1206,6 +1486,22 @@ class CoffeePosController extends ChangeNotifier {
     });
   }
 
+  void _startSharedOrdersSubscription() {
+    _sharedOrdersSubscription?.cancel();
+    if (Firebase.apps.isEmpty || _currentUserId == null) {
+      return;
+    }
+    _sharedOrdersSubscription = _sharedOrdersReference.onValue.listen((event) {
+      final value = event.snapshot.value;
+      if (value is! Map) {
+        return;
+      }
+      _applySharedOrders(Map<String, dynamic>.from(value));
+      unawaited(_saveLocalStateSnapshot(exportStateJson(pretty: false)));
+      notifyListeners();
+    });
+  }
+
   Future<void> _saveSharedCatalog() async {
     if (Firebase.apps.isEmpty ||
         _currentUserId == null ||
@@ -1218,6 +1514,51 @@ class CoffeePosController extends ChangeNotifier {
           .timeout(const Duration(seconds: 3));
     } catch (_) {
       // The local state remains available if the shared write fails.
+    }
+  }
+
+  Future<bool> _saveSharedOrders() async {
+    if (Firebase.apps.isEmpty || _currentUserId == null) {
+      return false;
+    }
+    try {
+      await _sharedOrdersReference
+          .set(_sharedOrdersJson())
+          .timeout(const Duration(seconds: 3));
+      return true;
+    } catch (_) {
+      // The user's local snapshot remains available if sync fails.
+      return false;
+    }
+  }
+
+  Future<bool> _removeSharedActiveOrder(String orderId) async {
+    if (Firebase.apps.isEmpty || _currentUserId == null) {
+      return false;
+    }
+    try {
+      final result = await _sharedOrdersReference
+          .child('activeOrders')
+          .runTransaction((value) {
+            final current = switch (value) {
+              List<Object?> values => values,
+              Map<Object?, Object?> values => values.values.toList(),
+              _ => const <Object?>[],
+            };
+            final remainingOrders = current
+                .where((value) {
+                  if (value is! Map) {
+                    return true;
+                  }
+                  return value['id'] != orderId;
+                })
+                .toList(growable: false);
+            return Transaction.success(remainingOrders);
+          })
+          .timeout(const Duration(seconds: 5));
+      return result.committed;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -1330,65 +1671,104 @@ class CoffeePosController extends ChangeNotifier {
         .join('|');
   }
 
+  int _computeNextSequence() {
+    var maxSeq = 0;
+    for (final o in _recentOrders) {
+      if (o.sequence > maxSeq) maxSeq = o.sequence;
+    }
+    for (final q in _activeOrders) {
+      if (q.sequence > maxSeq) maxSeq = q.sequence;
+    }
+    return maxSeq + 1;
+  }
+
   Future<OrderRecord?> checkout() async {
     if (!canCheckout) {
       return null;
     }
-
-    final draft = OrderDraft(
-      cashierName: _cashierName,
-      orderType: _orderType,
-      paymentType: _paymentType,
-      discountAmount: _discountAmount,
-      taxRate: _taxRate,
-      serviceChargeRate: _serviceChargeRate,
-      cashReceived: _cashReceived,
-      lines: _cart
-          .map(
-            (item) => CartLineInput(
-              lineId: item.lineId ?? item.product.id,
-              productId: item.product.id,
-              quantity: item.quantity,
-              modifierIds: item.selectedModifiers
-                  .map((modifier) => modifier.optionId)
-                  .toList(growable: false),
-              productName: item.product.name,
-              unitPrice: item.singleItemPrice,
-              modifierLabels: item.selectedModifiers
-                  .map((modifier) => modifier.label)
-                  .toList(growable: false),
-              lineTotal: item.lineTotal,
-            ),
-          )
-          .toList(growable: false),
-      note: 'Prototype checkout',
-      shiftId: _shiftId,
-    );
-
-    final order = await repository.createOrder(draft);
-    _recentOrders = [order, ..._recentOrders];
-    _activeOrders = [
-      OrderQueueRecord(
-        id: 'Q-${order.sequence}',
-        sequence: order.sequence,
-        status: OrderQueueStatus.preparing,
-        customerName: selectedCustomer?.name ?? 'Walk-in',
-        orderType: _orderType,
-        createdAt: order.createdAt,
-        items: order.items,
-      ),
-      ..._activeOrders,
-    ];
-    _todaySales += order.total;
-    clearCart(persist: false);
-    await _saveCurrentStateSnapshot();
+    _isCheckingOut = true;
     notifyListeners();
-    return order;
+
+    try {
+      final nextSequence = _computeNextSequence();
+      final draft = OrderDraft(
+        cashierName: _cashierName,
+        orderType: _orderType,
+        paymentType: _paymentType,
+        discountAmount: _discountAmount,
+        taxRate: _taxRate,
+        serviceChargeRate: _serviceChargeRate,
+        cashReceived: _cashReceived,
+        vatEnabled: _vatEnabled,
+        lines: _cart
+            .map(
+              (item) => CartLineInput(
+                lineId: item.lineId ?? item.product.id,
+                productId: item.product.id,
+                quantity: item.quantity,
+                modifierIds: item.selectedModifiers
+                    .map((modifier) => modifier.optionId)
+                    .toList(growable: false),
+                productName: item.product.name,
+                unitPrice: item.singleItemPrice,
+                modifierLabels: item.selectedModifiers
+                    .map((modifier) => modifier.label)
+                    .toList(growable: false),
+                lineTotal: item.lineTotal,
+                selectedModifiers: item.selectedModifiers,
+              ),
+            )
+            .toList(growable: false),
+        note: 'Prototype checkout',
+        shiftId: _shiftId,
+      );
+
+      final order = await repository.createOrder(draft, sequence: nextSequence);
+      _recentOrders = [order, ..._recentOrders];
+      _activeOrders = [
+        OrderQueueRecord(
+          id: 'Q-${order.id}',
+          sequence: order.sequence,
+          status: OrderQueueStatus.preparing,
+          customerName: selectedCustomer?.name ?? 'Walk-in',
+          orderType: _orderType,
+          createdAt: order.createdAt,
+          items: order.items,
+        ),
+        ..._activeOrders,
+      ];
+      _todaySales += order.total;
+      clearCart(persist: false);
+      await _saveCurrentStateSnapshot();
+      await _saveSharedOrders();
+      return order;
+    } finally {
+      _isCheckingOut = false;
+      notifyListeners();
+    }
   }
 
-  Future<void> printReceipt(OrderRecord order) async {
-    await receipt_printer.printReceipt(
+  /// Prints the paid order as one customer + kitchen package on the primary printer.
+  Future<receipt_printer.PrintResult> printOrderPackage(
+    OrderRecord order, {
+    bool manualReprint = false,
+    String? transportOverride,
+  }) => printReceipt(
+    order,
+    manualReprint: manualReprint,
+    transportOverride: transportOverride,
+    includeKitchen: true,
+  );
+
+  Future<receipt_printer.PrintResult> printReceipt(
+    OrderRecord order, {
+    bool manualReprint = false,
+    String? transportOverride,
+    bool includeKitchen = false,
+  }) {
+    return receipt_printer.printReceipt(
       order: order,
+      includeKitchen: includeKitchen,
       storeName: _storeName,
       storeAddress: _storeAddress,
       storeContact: _storeContact,
@@ -1397,13 +1777,105 @@ class CoffeePosController extends ChangeNotifier {
       printerName: _printerName,
       printerUrl: _printerUrl,
       compactReceiptStyle: _compactReceiptStyle,
+      thermalTransport: transportOverride ?? _thermalTransport,
+      thermalPaperWidth: effectiveThermalPaperWidth,
+      feedLines: _thermalFeedLines,
+      autoCut: _thermalAutoCut,
+      openCashDrawer: _thermalOpenCashDrawer,
+      manualReprint: manualReprint,
+      webKioskPrinting: _thermalWebKiosk,
     );
+  }
+
+  void updateKitchenPrinterSettings({
+    required String printerName,
+    required String printerUrl,
+  }) {
+    _kitchenPrinterName = printerName.trim();
+    _kitchenPrinterUrl = printerUrl.trim();
+    unawaited(_saveCurrentStateSnapshot());
+    notifyListeners();
+  }
+
+  Future<receipt_printer.PrintResult> printPreparationTicket(
+    OrderQueueRecord queue, {
+    String note = '',
+    String? transportOverride,
+  }) {
+    final effectivePrinterName = _kitchenPrinterName.isNotEmpty
+        ? _kitchenPrinterName
+        : _printerName;
+    final effectivePrinterUrl = _kitchenPrinterUrl.isNotEmpty
+        ? _kitchenPrinterUrl
+        : _printerUrl;
+    final ticket = receipt_printer.PreparationTicketData.fromQueueRecord(
+      queue,
+      note: note,
+      printerName: effectivePrinterName,
+    );
+    return receipt_printer.printPreparationTicket(
+      ticket: ticket,
+      printerName: effectivePrinterName,
+      printerUrl: effectivePrinterUrl,
+      compactReceiptStyle: _compactReceiptStyle,
+      thermalTransport: transportOverride ?? _thermalTransport,
+      thermalPaperWidth: effectiveThermalPaperWidth,
+      feedLines: _thermalFeedLines,
+      autoCut: _thermalAutoCut,
+      webKioskPrinting: _thermalWebKiosk,
+    );
+  }
+
+  Future<receipt_printer.PrintResult> printPreparationTicketFromOrder(
+    OrderRecord order, {
+    String note = '',
+    String? transportOverride,
+  }) {
+    final effectivePrinterName = _kitchenPrinterName.isNotEmpty
+        ? _kitchenPrinterName
+        : _printerName;
+    final effectivePrinterUrl = _kitchenPrinterUrl.isNotEmpty
+        ? _kitchenPrinterUrl
+        : _printerUrl;
+    final ticket = receipt_printer.PreparationTicketData.fromOrderRecord(
+      order,
+      note: note,
+      printerName: effectivePrinterName,
+    );
+    return receipt_printer.printPreparationTicket(
+      ticket: ticket,
+      printerName: effectivePrinterName,
+      printerUrl: effectivePrinterUrl,
+      compactReceiptStyle: _compactReceiptStyle,
+      thermalTransport: transportOverride ?? _thermalTransport,
+      thermalPaperWidth: effectiveThermalPaperWidth,
+      feedLines: _thermalFeedLines,
+      autoCut: _thermalAutoCut,
+      webKioskPrinting: _thermalWebKiosk,
+    );
+  }
+
+  Future<bool> isPrinterAvailable() {
+    final config = receipt_printer.PrinterConfig(
+      paperWidth:
+          receipt_printer.PaperWidth.fromInt(effectiveThermalPaperWidth),
+      transport: receipt_printer.ThermalTransport.fromString(_thermalTransport),
+      printerName: _printerName,
+      printerUrl: _printerUrl,
+      feedLines: _thermalFeedLines,
+      autoCut: _thermalAutoCut,
+      openCashDrawer: _thermalOpenCashDrawer,
+      compactReceiptStyle: _compactReceiptStyle,
+      webKioskPrinting: _thermalWebKiosk,
+    );
+    return receipt_printer.ThermalPrinterService.instance.isPrinterAvailable(config);
   }
 
   @override
   void dispose() {
     _realtimeSnapshotSubscription?.cancel();
     _sharedCatalogSubscription?.cancel();
+    _sharedOrdersSubscription?.cancel();
     super.dispose();
   }
 }

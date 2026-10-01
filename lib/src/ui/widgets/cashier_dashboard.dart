@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../domain/coffee_pos_models.dart';
 import '../../state/coffee_pos_controller.dart';
+import '../../utils/category_icon.dart';
+import '../../utils/receipt_printer.dart' as receipt_printer;
 
 class CashierDashboard extends StatelessWidget {
   const CashierDashboard({super.key, required this.controller});
@@ -458,7 +460,7 @@ class _CatalogPanel extends StatelessWidget {
                   final category = controller.cashierCategories[index];
                   final selected = controller.selectedCategoryIndex == index;
                   return ChoiceChip(
-                    avatar: Icon(_categoryIconData(category), size: 18),
+                    avatar: Icon(categoryIconData(category), size: 18),
                     label: Text(category.name),
                     selected: selected,
                     onSelected: (_) => controller.selectCategory(index),
@@ -575,8 +577,20 @@ class _ProductSearchDelegate extends SearchDelegate<Product?> {
             overflow: TextOverflow.ellipsis,
           ),
           trailing: const Icon(Icons.add_circle_outline),
-          onTap: () {
-            controller.addProduct(product);
+          onTap: () async {
+            final result = await _showProductCustomizer(
+              context,
+              controller: controller,
+              product: product,
+            );
+            if (result == null || !context.mounted) {
+              return;
+            }
+            controller.addProductToCart(
+              product,
+              selectedModifiers: result.selectedModifiers,
+              quantity: result.quantity,
+            );
             close(context, product);
           },
         );
@@ -851,7 +865,7 @@ class _LandscapeCategoryStrip extends StatelessWidget {
             selected: selected,
             onSelected: (_) => controller.selectCategory(index),
             label: Text(category.name),
-            avatar: Icon(_categoryIconData(category), size: 16),
+            avatar: Icon(categoryIconData(category), size: 16),
             labelStyle: TextStyle(
               fontWeight: FontWeight.w600,
               color: selected ? Colors.white : const Color(0xFF6E5847),
@@ -1307,7 +1321,21 @@ class _ProductGrid extends StatelessWidget {
               product: product,
               active: active,
               compactLandscape: compactLandscape,
-              onTap: () => controller.addProduct(product),
+              onTap: () async {
+                final result = await _showProductCustomizer(
+                  context,
+                  controller: controller,
+                  product: product,
+                );
+                if (result == null || !context.mounted) {
+                  return;
+                }
+                controller.addProductToCart(
+                  product,
+                  selectedModifiers: result.selectedModifiers,
+                  quantity: result.quantity,
+                );
+              },
               onDetails: () => controller.selectProduct(product.id),
             );
           },
@@ -2136,10 +2164,7 @@ Future<_CartCustomizationResult?> _showProductCustomizer(
   required Product product,
   CartItem? initialItem,
 }) async {
-  final groups = product.modifierGroupIds
-      .map(controller.modifierGroupById)
-      .whereType<ModifierGroup>()
-      .toList(growable: false);
+  final groups = controller.modifierGroupsForProduct(product);
   final initialSelection = <String, Set<String>>{};
   final initialModifiers =
       initialItem?.selectedModifiers ?? const <SelectedModifier>[];
@@ -2179,12 +2204,17 @@ Future<_CartCustomizationResult?> _showProductCustomizer(
                 if (!groupSelection.contains(option.id)) {
                   continue;
                 }
+                final isDefault = option.isDefault ||
+                    (group.minSelected > 0 &&
+                        group.options.first.id == option.id &&
+                        option.priceDelta == 0);
                 modifiers.add(
                   SelectedModifier(
                     groupId: group.id,
                     optionId: option.id,
                     label: option.name,
                     priceDelta: option.priceDelta,
+                    isDefault: isDefault,
                   ),
                 );
               }
@@ -2463,37 +2493,41 @@ class _SummaryCardState extends State<_SummaryCard> {
                     value: _money(summary.grossAmount),
                     width: ultraDenseLandscape ? 88 : 96,
                   ),
-                  _SummaryMiniStat(
-                    label: 'VATable',
-                    value: _money(summary.vatableSales),
-                    width: ultraDenseLandscape ? 88 : 96,
-                  ),
-                  _SummaryMiniStat(
-                    label: 'VAT-free',
-                    value: _money(summary.vatExemptSales),
-                    width: ultraDenseLandscape ? 88 : 96,
-                  ),
-                  if (summary.vatExemptionAmount > 0)
+                  if (summary.vatEnabled) ...[
                     _SummaryMiniStat(
-                      label: 'VAT exempt',
-                      value: _money(summary.vatExemptionAmount),
+                      label: 'VATable',
+                      value: _money(summary.vatableSales),
                       width: ultraDenseLandscape ? 88 : 96,
                     ),
+                    _SummaryMiniStat(
+                      label: 'VAT-free',
+                      value: _money(summary.vatExemptSales),
+                      width: ultraDenseLandscape ? 88 : 96,
+                    ),
+                    if (summary.vatExemptionAmount > 0)
+                      _SummaryMiniStat(
+                        label: 'VAT exempt',
+                        value: _money(summary.vatExemptionAmount),
+                        width: ultraDenseLandscape ? 88 : 96,
+                      ),
+                  ],
                   _SummaryMiniStat(
                     label: 'Discount',
                     value: '-${_money(summary.discount)}',
                     width: ultraDenseLandscape ? 88 : 96,
                   ),
-                  _SummaryMiniStat(
-                    label: 'Tax',
-                    value: _money(summary.tax),
-                    width: ultraDenseLandscape ? 88 : 96,
-                  ),
-                  _SummaryMiniStat(
-                    label: 'Svc chg',
-                    value: _money(summary.serviceCharge),
-                    width: ultraDenseLandscape ? 88 : 96,
-                  ),
+                  if (summary.vatEnabled && summary.tax > 0.001)
+                    _SummaryMiniStat(
+                      label: 'Tax',
+                      value: _money(summary.tax),
+                      width: ultraDenseLandscape ? 88 : 96,
+                    ),
+                  if (summary.serviceCharge > 0.001)
+                    _SummaryMiniStat(
+                      label: 'Svc chg',
+                      value: _money(summary.serviceCharge),
+                      width: ultraDenseLandscape ? 88 : 96,
+                    ),
                 ],
               ),
             ],
@@ -2593,33 +2627,28 @@ class _SummaryCardState extends State<_SummaryCard> {
                         ? () async {
                             final messenger = ScaffoldMessenger.of(context);
                             final order = await controller.checkout();
-                            if (order != null) {
-                              if (controller.autoPrintReceipts) {
-                                try {
-                                  await controller.printReceipt(order);
-                                } catch (_) {
-                                  messenger.showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'Saved ${order.id}, but receipt print failed.',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              }
-                              messenger.showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Saved ${order.id} as a paid order',
-                                  ),
-                                ),
+                            if (order != null && context.mounted) {
+                              await _handlePostCheckoutPrinting(
+                                context: context,
+                                messenger: messenger,
+                                controller: controller,
+                                order: order,
                               );
                             }
                           }
                         : null,
-                    icon: const Icon(Icons.lock_open, size: 18),
+                    icon: controller.isCheckingOut
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.lock_open, size: 18),
                     label: Text(
-                      'Charge',
+                      controller.isCheckingOut ? 'Processing...' : 'Charge',
                       style: TextStyle(fontSize: 11 * scale),
                     ),
                   ),
@@ -2697,37 +2726,41 @@ class _SummaryCardState extends State<_SummaryCard> {
                   value: _money(summary.grossAmount),
                   width: denseLandscape ? 88 : 96,
                 ),
-                _SummaryMiniStat(
-                  label: 'VATable',
-                  value: _money(summary.vatableSales),
-                  width: denseLandscape ? 88 : 96,
-                ),
-                _SummaryMiniStat(
-                  label: 'VAT-free',
-                  value: _money(summary.vatExemptSales),
-                  width: denseLandscape ? 88 : 96,
-                ),
-                if (summary.vatExemptionAmount > 0)
+                if (summary.vatEnabled) ...[
                   _SummaryMiniStat(
-                    label: 'VAT exempt',
-                    value: _money(summary.vatExemptionAmount),
+                    label: 'VATable',
+                    value: _money(summary.vatableSales),
                     width: denseLandscape ? 88 : 96,
                   ),
+                  _SummaryMiniStat(
+                    label: 'VAT-free',
+                    value: _money(summary.vatExemptSales),
+                    width: denseLandscape ? 88 : 96,
+                  ),
+                  if (summary.vatExemptionAmount > 0)
+                    _SummaryMiniStat(
+                      label: 'VAT exempt',
+                      value: _money(summary.vatExemptionAmount),
+                      width: denseLandscape ? 88 : 96,
+                    ),
+                ],
                 _SummaryMiniStat(
                   label: 'Discount',
                   value: '-${_money(summary.discount)}',
                   width: denseLandscape ? 88 : 96,
                 ),
-                _SummaryMiniStat(
-                  label: 'Tax',
-                  value: _money(summary.tax),
-                  width: denseLandscape ? 88 : 96,
-                ),
-                _SummaryMiniStat(
-                  label: 'Svc chg',
-                  value: _money(summary.serviceCharge),
-                  width: denseLandscape ? 88 : 96,
-                ),
+                if (summary.vatEnabled && summary.tax > 0.001)
+                  _SummaryMiniStat(
+                    label: 'Tax',
+                    value: _money(summary.tax),
+                    width: denseLandscape ? 88 : 96,
+                  ),
+                if (summary.serviceCharge > 0.001)
+                  _SummaryMiniStat(
+                    label: 'Svc chg',
+                    value: _money(summary.serviceCharge),
+                    width: denseLandscape ? 88 : 96,
+                  ),
               ],
             ),
           ],
@@ -2876,32 +2909,30 @@ class _SummaryCardState extends State<_SummaryCard> {
                       ? () async {
                           final messenger = ScaffoldMessenger.of(context);
                           final order = await controller.checkout();
-                          if (order != null) {
-                            if (controller.autoPrintReceipts) {
-                              try {
-                                await controller.printReceipt(order);
-                              } catch (_) {
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Saved ${order.id}, but receipt print failed.',
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Saved ${order.id} as a paid order',
-                                ),
-                              ),
+                          if (order != null && context.mounted) {
+                            await _handlePostCheckoutPrinting(
+                              context: context,
+                              messenger: messenger,
+                              controller: controller,
+                              order: order,
                             );
                           }
                         }
                       : null,
-                  icon: const Icon(Icons.lock_open),
-                  label: Text('Charge', style: TextStyle(fontSize: 12 * scale)),
+                  icon: controller.isCheckingOut
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.lock_open),
+                  label: Text(
+                    controller.isCheckingOut ? 'Processing...' : 'Charge',
+                    style: TextStyle(fontSize: 12 * scale),
+                  ),
                 ),
               ),
             ],
@@ -3320,43 +3351,6 @@ Color _productAccent(String categoryId) {
   }
 }
 
-/// Uses bundled Material icons instead of device-dependent emoji from imports.
-/// Custom or unknown categories still receive a visible generic icon.
-IconData _categoryIconData(Category category) {
-  switch (category.icon.trim()) {
-    case '☕':
-      return Icons.coffee_outlined;
-    case '🥤':
-    case '🧊':
-      return Icons.local_drink_outlined;
-    case '🍵':
-      return Icons.emoji_food_beverage_outlined;
-    case '🥐':
-    case '🍞':
-    case '🍿':
-    case '🥟':
-    case '🍗':
-    case '🍟':
-    case '🍢':
-    case '🧀':
-      return Icons.fastfood_outlined;
-    case '🍽️':
-    case '🍳':
-      return Icons.restaurant_outlined;
-    case '🍱':
-    case '👯':
-    case '🎮':
-    case '🎲':
-      return Icons.groups_outlined;
-    case '🍰':
-      return Icons.cake_outlined;
-    case '➕':
-      return Icons.add_circle_outline;
-    default:
-      return Icons.local_offer_outlined;
-  }
-}
-
 class _EmptyState extends StatelessWidget {
   const _EmptyState({
     required this.icon,
@@ -3386,3 +3380,80 @@ class _EmptyState extends StatelessWidget {
 }
 
 String _money(num value) => '₱${value.toStringAsFixed(2)}';
+
+Future<void> _handlePostCheckoutPrinting({
+  required BuildContext context,
+  required ScaffoldMessengerState messenger,
+  required CoffeePosController controller,
+  required OrderRecord order,
+}) async {
+  if (controller.autoPrintReceipts) {
+    try {
+      final result = await controller.printOrderPackage(order);
+      if (result.isSuccess) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Order ${order.id} paid. Customer & kitchen copies sent to printer.',
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+
+      final reason = result.status == receipt_printer.PrintStatus.canceled
+          ? 'Print cancelled'
+          : (result.message ?? 'Printing failed');
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Order ${order.id} saved. $reason'),
+          duration: const Duration(seconds: 7),
+          action: SnackBarAction(
+            label: 'Print via Dialog',
+            onPressed: () {
+              controller.printOrderPackage(
+                order,
+                manualReprint: true,
+                transportOverride: 'System dialog',
+              );
+            },
+          ),
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Receipt print failed for ${order.id}: $error\n$stackTrace',
+      );
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Order ${order.id} saved. Print error: $error'),
+          action: SnackBarAction(
+            label: 'Print via Dialog',
+            onPressed: () {
+              controller.printOrderPackage(
+                order,
+                manualReprint: true,
+                transportOverride: 'System dialog',
+              );
+            },
+          ),
+        ),
+      );
+    }
+  } else {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Saved ${order.id} as a paid order.'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'Print',
+          onPressed: () {
+            controller.printOrderPackage(order, manualReprint: true);
+          },
+        ),
+      ),
+    );
+  }
+}

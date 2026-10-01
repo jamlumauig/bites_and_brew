@@ -170,7 +170,7 @@ class _FirebaseUnavailableScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Image.asset(
-                      'assets/bites_and_brew_logo.png',
+                      'assets/haven_logo.png',
                       width: 88,
                       height: 88,
                     ),

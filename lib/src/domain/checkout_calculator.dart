@@ -1,11 +1,20 @@
 import 'coffee_pos_models.dart';
+import 'money.dart';
 
+export 'money.dart';
+
+/// Authoritative single source of truth for POS order and receipt financial calculations.
+///
+/// Implemented with deterministic integer minor units ([Money]) to eliminate
+/// floating-point precision issues and rounding errors.
 class OrderCalculationService {
   const OrderCalculationService({
     this.vatRate = 0.12,
+    this.vatEnabled = true,
   });
 
   final double vatRate;
+  final bool vatEnabled;
 
   OrderTotals calculate({
     required List<CartItem> cartItems,
@@ -13,11 +22,15 @@ class OrderCalculationService {
     required double serviceChargeRate,
     required double cashReceived,
     DiscountApplication discountApplication = const DiscountApplication.none(),
+    bool? vatEnabled,
   }) {
-    final grossAmount = _round2(
-      cartItems.fold<double>(0, (sum, item) => sum + item.lineTotal),
-    );
-    final serviceCharge = _round2(grossAmount * serviceChargeRate);
+    final effectiveVatEnabled = vatEnabled ?? this.vatEnabled;
+    var grossCents = 0;
+    for (final item in cartItems) {
+      grossCents += Money.fromDouble(item.lineTotal).cents;
+    }
+    final gross = Money.fromCents(grossCents);
+    final serviceCharge = Money.fromDouble(gross.toDouble() * serviceChargeRate);
     final effectiveDiscount = _effectiveDiscount(
       discountAmount: discountAmount,
       discountApplication: discountApplication,
@@ -28,69 +41,89 @@ class OrderCalculationService {
         discountType == DiscountType.seniorCitizen ||
         discountType == DiscountType.pwd;
 
-    double vatableSales = 0;
-    double vatExemptSales = 0;
-    double vatExemptionAmount = 0;
-    double vatAmount = 0;
-    double seniorDiscount = 0;
-    double pwdDiscount = 0;
-    double otherDiscount = 0;
-    double amountDue = 0;
+    Money vatableSales = Money.zero;
+    Money vatExemptSales = Money.zero;
+    Money vatExemptionAmount = Money.zero;
+    Money vatAmount = Money.zero;
+    Money seniorDiscount = Money.zero;
+    Money pwdDiscount = Money.zero;
+    Money otherDiscount = Money.zero;
+    Money amountDue = Money.zero;
 
-    if (isStatutory) {
-      final eligibleGross = _eligibleGrossAmount(
+    if (!effectiveVatEnabled) {
+      if (isStatutory) {
+        final eligibleGross = _eligibleGrossMoney(
+          cartItems: cartItems,
+          eligibleLineIds: effectiveDiscount.eligibleLineIds,
+        );
+        final statutoryDiscount = Money((eligibleGross.cents * 0.20).round());
+        if (discountType == DiscountType.seniorCitizen) {
+          seniorDiscount = statutoryDiscount;
+        } else {
+          pwdDiscount = statutoryDiscount;
+        }
+        amountDue = gross - statutoryDiscount + serviceCharge;
+      } else {
+        otherDiscount = _resolveOtherDiscountMoney(
+          effectiveDiscount,
+          gross,
+        );
+        final discountedGross = (gross - otherDiscount).clamp(Money.zero, gross);
+        amountDue = discountedGross + serviceCharge;
+      }
+    } else if (isStatutory) {
+      final eligibleGross = _eligibleGrossMoney(
         cartItems: cartItems,
         eligibleLineIds: effectiveDiscount.eligibleLineIds,
       );
-      final eligibleBase = _vatExclusiveFromGross(
-        eligibleGross,
-      );
-      vatExemptionAmount = _round2(eligibleGross - eligibleBase);
-      final statutoryDiscount = _round2(eligibleBase * 0.20);
+      final eligibleBase = _vatExclusiveFromGross(eligibleGross);
+      vatExemptionAmount = eligibleGross - eligibleBase;
+      final statutoryDiscount = Money((eligibleBase.cents * 0.20).round());
 
-      seniorDiscount = discountType == DiscountType.seniorCitizen
-          ? statutoryDiscount
-          : 0;
-      pwdDiscount = discountType == DiscountType.pwd ? statutoryDiscount : 0;
+      if (discountType == DiscountType.seniorCitizen) {
+        seniorDiscount = statutoryDiscount;
+      } else {
+        pwdDiscount = statutoryDiscount;
+      }
 
       vatExemptSales = eligibleBase;
-      final regularGross = _round2(grossAmount - eligibleGross);
+      final regularGross = gross - eligibleGross;
       vatableSales = _vatExclusiveFromGross(regularGross);
-      vatAmount = _round2(regularGross - vatableSales);
-      amountDue = _round2(
-        grossAmount - vatExemptionAmount - statutoryDiscount + serviceCharge,
-      );
+      vatAmount = regularGross - vatableSales;
+      amountDue = gross - vatExemptionAmount - statutoryDiscount + serviceCharge;
     } else {
-      otherDiscount = _resolveOtherDiscount(
+      otherDiscount = _resolveOtherDiscountMoney(
         effectiveDiscount,
-        grossAmount,
+        gross,
       );
-      final discountedGross = _round2((grossAmount - otherDiscount).clamp(0, double.infinity));
+      final discountedGross = (gross - otherDiscount).clamp(Money.zero, gross);
       vatableSales = _vatExclusiveFromGross(discountedGross);
-      vatAmount = _round2(discountedGross - vatableSales);
-      amountDue = _round2(discountedGross + serviceCharge);
+      vatAmount = discountedGross - vatableSales;
+      amountDue = discountedGross + serviceCharge;
     }
 
-    final totalDiscount = _round2(seniorDiscount + pwdDiscount + otherDiscount);
-    final change = _round2((cashReceived - amountDue).clamp(0, double.infinity));
-    final isValid = cartItems.isNotEmpty && amountDue > 0;
+    final totalDiscount = seniorDiscount + pwdDiscount + otherDiscount;
+    final cash = Money.fromDouble(cashReceived);
+    final change = (cash - amountDue).clamp(Money.zero, cash);
+    final isValid = cartItems.isNotEmpty && amountDue.cents > 0;
 
     return OrderTotals(
-      grossAmount: grossAmount,
-      vatableSales: vatableSales,
-      vatExemptSales: vatExemptSales,
-      vatExemptionAmount: vatExemptionAmount,
-      vatAmount: vatAmount,
-      seniorDiscount: seniorDiscount,
-      pwdDiscount: pwdDiscount,
-      otherDiscount: otherDiscount,
-      totalDiscount: totalDiscount,
-      serviceCharge: serviceCharge,
-      amountDue: amountDue,
+      grossAmount: gross.toDouble(),
+      vatableSales: vatableSales.toDouble(),
+      vatExemptSales: vatExemptSales.toDouble(),
+      vatExemptionAmount: vatExemptionAmount.toDouble(),
+      vatAmount: vatAmount.toDouble(),
+      seniorDiscount: seniorDiscount.toDouble(),
+      pwdDiscount: pwdDiscount.toDouble(),
+      otherDiscount: otherDiscount.toDouble(),
+      totalDiscount: totalDiscount.toDouble(),
+      serviceCharge: serviceCharge.toDouble(),
+      amountDue: amountDue.toDouble(),
       discountApplication: effectiveDiscount,
-      cashReceived: cashReceived,
-      change: change,
+      cashReceived: cash.toDouble(),
+      change: change.toDouble(),
       isValid: isValid,
+      vatEnabled: effectiveVatEnabled,
     );
   }
 
@@ -101,14 +134,16 @@ class OrderCalculationService {
     required double serviceChargeRate,
     required double cashReceived,
     DiscountApplication discountApplication = const DiscountApplication.none(),
+    bool vatEnabled = true,
   }) {
-    final calculator = OrderCalculationService(vatRate: taxRate);
+    final calculator = OrderCalculationService(vatRate: taxRate, vatEnabled: vatEnabled);
     final totals = calculator.calculate(
       cartItems: cartItems,
       discountAmount: discountAmount,
       serviceChargeRate: serviceChargeRate,
       cashReceived: cashReceived,
       discountApplication: discountApplication,
+      vatEnabled: vatEnabled,
     );
     return CheckoutSummary(
       grossAmount: totals.grossAmount,
@@ -126,6 +161,7 @@ class OrderCalculationService {
       cashReceived: totals.cashReceived,
       change: totals.change,
       isValid: totals.isValid,
+      vatEnabled: totals.vatEnabled,
     );
   }
 
@@ -145,23 +181,23 @@ class OrderCalculationService {
     return const DiscountApplication.none();
   }
 
-  double _resolveOtherDiscount(
+  Money _resolveOtherDiscountMoney(
     DiscountApplication application,
-    double grossAmount,
+    Money gross,
   ) {
     switch (application.type) {
       case DiscountType.percentage:
-        return _round2((grossAmount * application.percentage).clamp(0, grossAmount));
+        return Money((gross.cents * application.percentage).round()).clamp(Money.zero, gross);
       case DiscountType.fixedAmount:
-        return _round2(application.fixedAmount.clamp(0, grossAmount));
+        return Money.fromDouble(application.fixedAmount).clamp(Money.zero, gross);
       case DiscountType.seniorCitizen:
       case DiscountType.pwd:
       case DiscountType.none:
-        return 0;
+        return Money.zero;
     }
   }
 
-  double _eligibleGrossAmount({
+  Money _eligibleGrossMoney({
     required List<CartItem> cartItems,
     required List<String> eligibleLineIds,
   }) {
@@ -172,20 +208,24 @@ class OrderCalculationService {
       }
       return selectedIds.contains(item.lineId ?? item.product.id);
     });
-    return _round2(
-      eligibleItems.fold<double>(0, (sum, item) => sum + item.lineTotal),
-    );
-  }
-
-  double _vatExclusiveFromGross(double gross) {
-    if (gross <= 0) {
-      return 0;
+    var sumCents = 0;
+    for (final item in eligibleItems) {
+      sumCents += Money.fromDouble(item.lineTotal).cents;
     }
-    return _round2(gross / (1 + vatRate));
+    return Money.fromCents(sumCents);
   }
 
-  double _round2(num value) => double.parse(value.toStringAsFixed(2));
+  Money _vatExclusiveFromGross(Money gross) {
+    if (gross.cents <= 0) {
+      return Money.zero;
+    }
+    final factor = 100 + (vatRate * 100).round();
+    return Money((gross.cents * 100 / factor).round());
+  }
 }
+
+/// Authoritative alias for [OrderCalculationService] when used in receipt pipelines.
+typedef ReceiptCalculationService = OrderCalculationService;
 
 class CheckoutCalculator {
   const CheckoutCalculator();
@@ -197,8 +237,9 @@ class CheckoutCalculator {
     required double serviceChargeRate,
     required double cashReceived,
     DiscountApplication discountApplication = const DiscountApplication.none(),
+    bool vatEnabled = true,
   }) {
-    final calculator = OrderCalculationService(vatRate: taxRate);
+    final calculator = OrderCalculationService(vatRate: taxRate, vatEnabled: vatEnabled);
     return calculator.summarize(
       cartItems: cartItems,
       discountAmount: discountAmount,
@@ -206,6 +247,7 @@ class CheckoutCalculator {
       serviceChargeRate: serviceChargeRate,
       cashReceived: cashReceived,
       discountApplication: discountApplication,
+      vatEnabled: vatEnabled,
     );
   }
 
@@ -216,14 +258,16 @@ class CheckoutCalculator {
     required double serviceChargeRate,
     required double cashReceived,
     DiscountApplication discountApplication = const DiscountApplication.none(),
+    bool vatEnabled = true,
   }) {
-    final calculator = OrderCalculationService(vatRate: taxRate);
+    final calculator = OrderCalculationService(vatRate: taxRate, vatEnabled: vatEnabled);
     return calculator.calculate(
       cartItems: cartItems,
       discountAmount: discountAmount,
       serviceChargeRate: serviceChargeRate,
       cashReceived: cashReceived,
       discountApplication: discountApplication,
+      vatEnabled: vatEnabled,
     );
   }
 }

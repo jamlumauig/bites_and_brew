@@ -111,4 +111,41 @@ void main() {
     expect(reloaded.activeOrders, hasLength(1));
     expect(reloaded.todaySales, completedOrder.total);
   });
+
+  test('completing an active order works without a Firebase session', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+
+    final repository = InMemoryCoffeePosRepository();
+    final controller = CoffeePosController(repository: repository);
+    await controller.initialize();
+    controller.addProductToCart(controller.products.first);
+    await controller.checkout();
+
+    final activeOrder = controller.activeOrders.single;
+    final completed = await controller.completeOrder(activeOrder);
+
+    expect(completed, isTrue);
+    expect(controller.activeOrders, isEmpty);
+
+    await controller.flushPersistence();
+
+    final reloaded = CoffeePosController(repository: repository);
+    await reloaded.initialize();
+    expect(reloaded.activeOrders, isEmpty);
+  });
+
+  test('printer settings default to GEZHI_micro_printer, 80mm roll, and Direct print (no prompt)', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+
+    final repository = InMemoryCoffeePosRepository();
+    final controller = CoffeePosController(repository: repository);
+    await controller.initialize();
+
+    expect(controller.printerName, 'GEZHI_micro_printer');
+    expect(controller.thermalPaperWidth, 80);
+    expect(controller.thermalTransport, 'Direct print (no prompt)');
+    expect(controller.autoPrintReceipts, isTrue);
+    expect(controller.thermalAutoCut, isTrue);
+    expect(controller.thermalFeedLines, 2);
+  });
 }

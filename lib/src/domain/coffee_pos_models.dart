@@ -104,12 +104,21 @@ class StoreBootstrap {
 
     const modifierGroups = <ModifierGroup>[
       ModifierGroup(
-        id: 'size',
-        name: 'Size',
+        id: 'drink-size',
+        name: 'Drink size',
         options: <ModifierOption>[
-          ModifierOption(id: 'small', name: 'Small', priceDelta: 0),
-          ModifierOption(id: 'medium', name: 'Medium', priceDelta: 18),
-          ModifierOption(id: 'large', name: 'Large', priceDelta: 32),
+          ModifierOption(id: '16oz', name: '16 oz', priceDelta: 0, isDefault: true),
+          ModifierOption(id: '22oz', name: '22 oz', priceDelta: 32),
+        ],
+        minSelected: 1,
+        maxSelected: 1,
+      ),
+      ModifierGroup(
+        id: 'snack-size',
+        name: 'Snack size',
+        options: <ModifierOption>[
+          ModifierOption(id: 'small', name: 'Small', priceDelta: 0, isDefault: true),
+          ModifierOption(id: 'large', name: 'Large', priceDelta: 20),
         ],
         minSelected: 1,
         maxSelected: 1,
@@ -118,7 +127,7 @@ class StoreBootstrap {
         id: 'milk',
         name: 'Milk',
         options: <ModifierOption>[
-          ModifierOption(id: 'regular', name: 'Regular Milk', priceDelta: 0),
+          ModifierOption(id: 'regular', name: 'Regular Milk', priceDelta: 0, isDefault: true),
           ModifierOption(id: 'oat', name: 'Oat Milk', priceDelta: 26),
           ModifierOption(id: 'almond', name: 'Almond Milk', priceDelta: 22),
         ],
@@ -146,7 +155,7 @@ class StoreBootstrap {
         price: 145,
         description: 'Smooth espresso, steamed milk, caramel finish.',
         badge: 'Top seller',
-        modifierGroupIds: const ['size', 'milk', 'extras'],
+        modifierGroupIds: const ['drink-size', 'milk', 'extras'],
       ),
       Product(
         id: 'americano',
@@ -155,7 +164,7 @@ class StoreBootstrap {
         price: 110,
         description: 'Bright espresso with hot water and clean finish.',
         badge: 'Fast prep',
-        modifierGroupIds: const ['size', 'extras'],
+        modifierGroupIds: const ['drink-size', 'extras'],
       ),
       Product(
         id: 'mocha',
@@ -164,7 +173,7 @@ class StoreBootstrap {
         price: 158,
         description: 'Chocolate, espresso, and cold milk over ice.',
         badge: 'Popular',
-        modifierGroupIds: const ['size', 'milk', 'extras'],
+        modifierGroupIds: const ['drink-size', 'milk', 'extras'],
       ),
       Product(
         id: 'matcha',
@@ -173,7 +182,7 @@ class StoreBootstrap {
         price: 162,
         description: 'Ceremonial matcha with creamy milk foam.',
         badge: 'New',
-        modifierGroupIds: const ['size', 'milk'],
+        modifierGroupIds: const ['drink-size', 'milk'],
       ),
       Product(
         id: 'yuzu',
@@ -182,7 +191,7 @@ class StoreBootstrap {
         price: 125,
         description: 'Citrus soda with a refreshing finish.',
         badge: 'Chilled',
-        modifierGroupIds: const ['size'],
+        modifierGroupIds: const ['drink-size'],
       ),
       Product(
         id: 'croissant',
@@ -191,7 +200,7 @@ class StoreBootstrap {
         price: 78,
         description: 'Flaky, golden, baked fresh throughout the day.',
         badge: 'Fresh bake',
-        modifierGroupIds: const [],
+        modifierGroupIds: const ['snack-size'],
       ),
       Product(
         id: 'sandwich',
@@ -200,7 +209,7 @@ class StoreBootstrap {
         price: 138,
         description: 'Toasted sandwich with basil pesto and cheese.',
         badge: 'Ready to serve',
-        modifierGroupIds: const [],
+        modifierGroupIds: const ['snack-size'],
       ),
       Product(
         id: 'cheesecake',
@@ -330,16 +339,19 @@ class ModifierOption {
     required this.id,
     required this.name,
     required this.priceDelta,
+    this.isDefault = false,
   });
 
   final String id;
   final String name;
   final double priceDelta;
+  final bool isDefault;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
     'name': name,
     'priceDelta': priceDelta,
+    'isDefault': isDefault,
   };
 
   factory ModifierOption.fromJson(Map<String, dynamic> json) {
@@ -347,6 +359,7 @@ class ModifierOption {
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
       priceDelta: _numValue(json['priceDelta']),
+      isDefault: json['isDefault'] as bool? ?? false,
     );
   }
 }
@@ -357,18 +370,23 @@ class SelectedModifier {
     required this.optionId,
     required this.label,
     required this.priceDelta,
+    this.isDefault = false,
   });
 
   final String groupId;
   final String optionId;
   final String label;
   final double priceDelta;
+  final bool isDefault;
+
+  String get name => label;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'groupId': groupId,
     'optionId': optionId,
     'label': label,
     'priceDelta': priceDelta,
+    'isDefault': isDefault,
   };
 
   factory SelectedModifier.fromJson(Map<String, dynamic> json) {
@@ -377,6 +395,7 @@ class SelectedModifier {
       optionId: json['optionId'] as String? ?? '',
       label: json['label'] as String? ?? '',
       priceDelta: _numValue(json['priceDelta']),
+      isDefault: json['isDefault'] as bool? ?? false,
     );
   }
 }
@@ -512,6 +531,7 @@ class CartLineInput {
     required this.unitPrice,
     required this.modifierLabels,
     required this.lineTotal,
+    this.selectedModifiers = const <SelectedModifier>[],
   });
 
   final String lineId;
@@ -522,6 +542,7 @@ class CartLineInput {
   final double unitPrice;
   final List<String> modifierLabels;
   final double lineTotal;
+  final List<SelectedModifier> selectedModifiers;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'lineId': lineId,
@@ -532,6 +553,7 @@ class CartLineInput {
     'unitPrice': unitPrice,
     'modifierLabels': modifierLabels,
     'lineTotal': lineTotal,
+    'selectedModifiers': selectedModifiers.map((item) => item.toJson()).toList(growable: false),
   };
 
   factory CartLineInput.fromJson(Map<String, dynamic> json) {
@@ -544,6 +566,7 @@ class CartLineInput {
       unitPrice: _numValue(json['unitPrice']),
       modifierLabels: _readStringList(json['modifierLabels']),
       lineTotal: _numValue(json['lineTotal']),
+      selectedModifiers: _readList(json['selectedModifiers'], SelectedModifier.fromJson),
     );
   }
 }
@@ -561,6 +584,7 @@ class OrderDraft {
     required this.shiftId,
     this.discountAmount = 0,
     this.discountApplication = const DiscountApplication.none(),
+    this.vatEnabled = true,
   });
 
   final String cashierName;
@@ -574,6 +598,7 @@ class OrderDraft {
   final String shiftId;
   final double discountAmount;
   final DiscountApplication discountApplication;
+  final bool vatEnabled;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'cashierName': cashierName,
@@ -587,6 +612,7 @@ class OrderDraft {
     'shiftId': shiftId,
     'discountAmount': discountAmount,
     'discountApplication': discountApplication.toJson(),
+    'vatEnabled': vatEnabled,
   };
 
   factory OrderDraft.fromJson(Map<String, dynamic> json) {
@@ -610,6 +636,7 @@ class OrderDraft {
               Map<String, dynamic>.from(json['discountApplication'] as Map),
             )
           : const DiscountApplication.none(),
+      vatEnabled: json['vatEnabled'] as bool? ?? true,
     );
   }
 }
@@ -623,6 +650,7 @@ class OrderLineSnapshot {
     required this.quantity,
     required this.modifierLabels,
     required this.lineTotal,
+    this.selectedModifiers = const <SelectedModifier>[],
   });
 
   final String lineId;
@@ -632,6 +660,7 @@ class OrderLineSnapshot {
   final int quantity;
   final List<String> modifierLabels;
   final double lineTotal;
+  final List<SelectedModifier> selectedModifiers;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'lineId': lineId,
@@ -641,6 +670,7 @@ class OrderLineSnapshot {
     'quantity': quantity,
     'modifierLabels': modifierLabels,
     'lineTotal': lineTotal,
+    'selectedModifiers': selectedModifiers.map((item) => item.toJson()).toList(growable: false),
   };
 
   factory OrderLineSnapshot.fromJson(Map<String, dynamic> json) {
@@ -652,6 +682,7 @@ class OrderLineSnapshot {
       quantity: _intValue(json['quantity'], 1),
       modifierLabels: _readStringList(json['modifierLabels']),
       lineTotal: _numValue(json['lineTotal']),
+      selectedModifiers: _readList(json['selectedModifiers'], SelectedModifier.fromJson),
     );
   }
 }
@@ -673,6 +704,7 @@ class OrderTotals {
     required this.cashReceived,
     required this.change,
     required this.isValid,
+    this.vatEnabled = true,
   });
 
   final double grossAmount;
@@ -690,6 +722,7 @@ class OrderTotals {
   final double cashReceived;
   final double change;
   final bool isValid;
+  final bool vatEnabled;
 
   double get subtotal => grossAmount;
   double get discount => totalDiscount;
@@ -808,6 +841,7 @@ class OrderRecord {
     this.otherDiscount = 0,
     this.totalDiscount = 0,
     this.discountApplication = const DiscountApplication.none(),
+    this.vatEnabled = true,
   });
 
   final String id;
@@ -834,6 +868,7 @@ class OrderRecord {
   final double otherDiscount;
   final double totalDiscount;
   final DiscountApplication discountApplication;
+  final bool vatEnabled;
 
   factory OrderRecord.fromDraft(OrderDraft draft, {required int sequence}) {
     throw UnsupportedError(
@@ -845,9 +880,10 @@ class OrderRecord {
     required OrderDraft draft,
     required OrderTotals totals,
     required int sequence,
+    String? id,
   }) {
     return OrderRecord(
-      id: 'ORD-$sequence',
+      id: id ?? 'ORD-$sequence',
       sequence: sequence,
       status: OrderStatus.paid,
       orderType: draft.orderType,
@@ -871,6 +907,7 @@ class OrderRecord {
               quantity: line.quantity,
               modifierLabels: line.modifierLabels,
               lineTotal: line.lineTotal,
+              selectedModifiers: line.selectedModifiers,
             ),
           )
           .toList(growable: false),
@@ -883,6 +920,7 @@ class OrderRecord {
       otherDiscount: totals.otherDiscount,
       totalDiscount: totals.totalDiscount,
       discountApplication: totals.discountApplication,
+      vatEnabled: totals.vatEnabled,
     );
   }
 
@@ -911,6 +949,7 @@ class OrderRecord {
     'otherDiscount': otherDiscount,
     'totalDiscount': totalDiscount,
     'discountApplication': discountApplication.toJson(),
+    'vatEnabled': vatEnabled,
   };
 
   factory OrderRecord.fromJson(Map<String, dynamic> json) {
@@ -953,6 +992,8 @@ class OrderRecord {
               Map<String, dynamic>.from(json['discountApplication'] as Map),
             )
           : const DiscountApplication.none(),
+      vatEnabled: json['vatEnabled'] as bool? ??
+          (_numValue(json['tax']) > 0 || _numValue(json['vatableSales']) > 0),
     );
   }
 }
@@ -1042,6 +1083,7 @@ class CheckoutSummary extends OrderTotals {
     required super.cashReceived,
     required super.change,
     required super.isValid,
+    super.vatEnabled = true,
   });
 }
 

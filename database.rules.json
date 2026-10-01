@@ -10,6 +10,10 @@
       "catalog": {
         ".read": "auth != null",
         ".write": "auth != null && auth.token.role === 'admin'"
+      },
+      "orders": {
+        ".read": "auth != null",
+        ".write": "auth != null"
       }
     }
   }

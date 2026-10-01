@@ -3,12 +3,14 @@ import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
 import '../../domain/checkout_calculator.dart';
 import '../../domain/coffee_pos_models.dart';
 import '../../state/coffee_pos_controller.dart';
+import '../../utils/receipt_printer.dart' as receipt_printer;
 import 'admin_dashboard.dart';
 import 'cashier_dashboard.dart';
 
@@ -59,7 +61,7 @@ class _CoffeePosShellState extends State<CoffeePosShell> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Image.asset(
-                        'assets/bites_and_brew_logo.png',
+                        'assets/haven_logo.png',
                         width: 28,
                         height: 28,
                         fit: BoxFit.contain,
@@ -178,9 +180,15 @@ class _SectionHost extends StatelessWidget {
             },
             onView: (order) => _showOrderDetails(context, order),
             onComplete: (order) async {
-              final confirm = await _confirmComplete(context, order);
-              if (confirm == true) {
-                controller.completeOrder(order);
+              final completed = await _confirmComplete(
+                context,
+                order,
+                onConfirm: () => controller.completeOrder(order),
+              );
+              if (completed && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('${order.id} marked as complete')),
+                );
               }
             },
           ),
@@ -333,7 +341,7 @@ class _PermanentSidebar extends StatelessWidget {
                       ),
                       padding: const EdgeInsets.all(4),
                       child: Image.asset(
-                        'assets/bites_and_brew_logo.png',
+                        'assets/haven_logo.png',
                         fit: BoxFit.contain,
                       ),
                     ),
@@ -442,7 +450,7 @@ class _ShellDrawer extends StatelessWidget {
                       ),
                       padding: const EdgeInsets.all(4),
                       child: Image.asset(
-                        'assets/bites_and_brew_logo.png',
+                        'assets/haven_logo.png',
                         fit: BoxFit.contain,
                       ),
                     ),
@@ -795,6 +803,27 @@ class _InProgressOrdersPage extends StatelessWidget {
                     : () => onView(order),
                 secondaryActionLabel: 'Complete',
                 onSecondaryAction: () => onComplete(order),
+                onPrintTicket: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final result = await controller.printPreparationTicket(order);
+                  if (context.mounted) {
+                    if (result.isSuccess) {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text('Preparation ticket printed for ${order.id}'),
+                        ),
+                      );
+                    } else {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Print ticket failed: ${result.message ?? "Unknown error"}',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
               ),
             ),
           ),
@@ -1329,7 +1358,7 @@ class _SettingsPage extends StatelessWidget {
                   icon: Icons.print_outlined,
                   title: 'Printer Settings',
                   subtitle:
-                      '${controller.printerName}${controller.printerUrl.isNotEmpty ? ' · Saved printer' : ''} · ${controller.autoPrintReceipts ? 'Auto print on' : 'Auto print off'}',
+                      '${controller.thermalTransport} · ${controller.thermalPaperWidth == 0 ? 'Auto size' : '${controller.thermalPaperWidth} mm'} · ${controller.autoPrintReceipts ? 'Auto print on' : 'Auto print off'}',
                   onTap: () => _editPrinterSettings(context, controller),
                 ),
                 _SettingsTile(
@@ -1512,6 +1541,7 @@ Future<void> _editTaxSettings(
   BuildContext context,
   CoffeePosController controller,
 ) async {
+  bool vatEnabled = controller.vatEnabled;
   final taxController = TextEditingController(
     text: (controller.taxRate * 100).toStringAsFixed(0),
   );
@@ -1521,53 +1551,81 @@ Future<void> _editTaxSettings(
   await showDialog<void>(
     context: context,
     builder: (dialogContext) {
-      return AlertDialog(
-        title: const Text('Tax Settings'),
-        content: SizedBox(
-          width: 440,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: taxController,
-                  decoration: const InputDecoration(labelText: 'VAT rate (%)'),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Tax Settings'),
+            content: SizedBox(
+              width: 440,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('VAT'),
+                      subtitle: Text(
+                        vatEnabled
+                            ? 'Enabled - Tax is computed and printed on receipts'
+                            : 'Disabled - Non-VAT transactions; no tax line on receipts',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      value: vatEnabled,
+                      onChanged: (value) => setState(() => vatEnabled = value),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: taxController,
+                      enabled: vatEnabled,
+                      decoration: InputDecoration(
+                        labelText: 'VAT rate (%)',
+                        hintText: '12',
+                        helperText: vatEnabled
+                            ? 'Standard Philippine retail VAT is 12%'
+                            : 'VAT is currently disabled',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: serviceController,
+                      decoration: const InputDecoration(
+                        labelText: 'Service charge (%)',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: serviceController,
-                  decoration: const InputDecoration(
-                    labelText: 'Service charge (%)',
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              controller.updateTaxRate(
-                (double.tryParse(taxController.text) ?? 0) / 100,
-              );
-              controller.updateServiceChargeRate(
-                (double.tryParse(serviceController.text) ?? 0) / 100,
-              );
-              Navigator.of(dialogContext).pop();
-            },
-            child: const Text('Save'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final parsedRate = vatEnabled
+                      ? ((double.tryParse(taxController.text) ?? 12) / 100)
+                      : controller.taxRate;
+                  final parsedService =
+                      (double.tryParse(serviceController.text) ?? 0) / 100;
+                  controller.updateTaxSettings(
+                    vatEnabled: vatEnabled,
+                    taxRate: parsedRate,
+                    serviceChargeRate: parsedService,
+                  );
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
       );
     },
   );
@@ -1635,8 +1693,24 @@ Future<void> _editPrinterSettings(
   final printerController = TextEditingController(text: controller.printerName);
   String selectedPrinterUrl = controller.printerUrl;
   bool autoPrint = controller.autoPrintReceipts;
+  String transport =
+      const [
+        'Direct print (no prompt)',
+        'System dialog',
+        'Thermal printer app',
+        'Network (ESC/POS)',
+      ].contains(controller.thermalTransport)
+      ? controller.thermalTransport
+      : 'Direct print (no prompt)';
+  int paperWidth = controller.thermalPaperWidth;
+  int feedLines = controller.thermalFeedLines;
+  bool autoCut = controller.thermalAutoCut;
+  bool openCashDrawer = controller.thermalOpenCashDrawer;
+  bool webKioskPrinting = controller.thermalWebKiosk;
   String? connectionStatus;
   bool checkingConnection = false;
+  final isSystemDialogSelected = transport == 'System dialog' &&
+      (kIsWeb || defaultTargetPlatform == TargetPlatform.android);
 
   Future<void> checkConnection(StateSetter setState) async {
     setState(() {
@@ -1733,35 +1807,219 @@ Future<void> _editPrinterSettings(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextField(
-                      controller: printerController,
-                      onChanged: (_) => setState(() {
-                        selectedPrinterUrl = '';
-                        connectionStatus = null;
-                      }),
-                      decoration: const InputDecoration(
-                        labelText: 'Printer name',
-                      ),
+                    FilledButton.tonalIcon(
+                      onPressed: checkingConnection
+                          ? null
+                          : () async {
+                              setState(() {
+                                checkingConnection = true;
+                                connectionStatus = null;
+                              });
+                              final success = await controller.autoConfigurePrinter(force: true);
+                              if (success) {
+                                setState(() {
+                                  printerController.text = controller.printerName;
+                                  selectedPrinterUrl = controller.printerUrl;
+                                  transport = controller.thermalTransport;
+                                  paperWidth = controller.thermalPaperWidth;
+                                  autoPrint = controller.autoPrintReceipts;
+                                  connectionStatus =
+                                      'Auto-configured: ${controller.printerName} (80mm roll, Direct print)';
+                                });
+                              } else {
+                                await checkConnection(setState);
+                              }
+                              setState(() {
+                                checkingConnection = false;
+                              });
+                            },
+                      icon: checkingConnection
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.auto_fix_high),
+                      label: const Text('Auto-detect 80mm Printer'),
                     ),
                     const SizedBox(height: 12),
+                    if (isSystemDialogSelected)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF0E5),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE2A77F)),
+                        ),
+                        child: const Text(
+                          'Your device will choose the printer when you print a receipt. Android opens its system print dialog; Chrome opens the browser print dialog.',
+                          style: TextStyle(
+                            color: Color(0xFF6B4423),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else
+                      TextField(
+                        controller: printerController,
+                        onChanged: (_) => setState(() {
+                          selectedPrinterUrl = '';
+                          connectionStatus = null;
+                        }),
+                        decoration: const InputDecoration(
+                          labelText: 'Printer name',
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: transport,
+                      decoration: const InputDecoration(
+                        labelText: 'Connection method',
+                      ),
+                      items: const [
+                        'Direct print (no prompt)',
+                        'System dialog',
+                        'Thermal printer app',
+                        'Network (ESC/POS)',
+                      ]
+                          .map(
+                            (value) => DropdownMenuItem(
+                              value: value,
+                              child: Text(value),
+                            ),
+                          )
+                          .toList(growable: false),
+                      onChanged: (value) =>
+                          setState(() => transport = value ?? transport),
+                    ),
+                    if (transport == 'Direct print (no prompt)') ...[
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          kIsWeb
+                              ? 'Native macOS app prints directly to GEZHI_micro_printer via CUPS with zero prompts.\nIn Chrome browser, direct silent printing requires Chrome Kiosk Mode (--kiosk-printing) or a local bridge daemon.'
+                              : 'Sends receipts directly to your connected thermal printer silently with zero print dialog prompts.',
+                          style: TextStyle(
+                            color: kIsWeb ? const Color(0xFF6B4423) : const Color(0xFF2E6B30),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      if (kIsWeb)
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Chrome Kiosk Mode (--kiosk-printing)'),
+                          subtitle: const Text(
+                            'Enable if Chrome is running with --kiosk-printing for silent browser printing.',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                          value: webKioskPrinting,
+                          onChanged: (val) => setState(() => webKioskPrinting = val),
+                        ),
+                    ]
+                    else if (transport == 'Network (ESC/POS)') ...[
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        initialValue: selectedPrinterUrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Printer IP address : Port',
+                          hintText: '192.168.1.100:9100',
+                        ),
+                        onChanged: (val) =>
+                            setState(() => selectedPrinterUrl = val.trim()),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Text(
+                          'Transmits raw ESC/POS commands directly to an 80mm thermal printer (e.g. Officom 80mm) over your local Wi-Fi or Ethernet network. Default port is 9100.',
+                          style: TextStyle(
+                            color: Color(0xFF6B4423),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ] else if (!kIsWeb &&
+                        defaultTargetPlatform == TargetPlatform.android &&
+                        transport == 'Thermal printer app')
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text(
+                          'When a receipt is printed, Android will open its share sheet. Select RawBT, PrinterShare, or your printer manufacturer app to send it to your Bluetooth, USB, or Wi-Fi thermal printer.',
+                          style: TextStyle(
+                            color: Color(0xFF6B4423),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<int>(
+                      initialValue: paperWidth,
+                      decoration: const InputDecoration(
+                        labelText: 'Paper size',
+                      ),
+                      items: const [0, 58, 80, 50]
+                          .map(
+                            (value) => DropdownMenuItem(
+                              value: value,
+                              child: Text(
+                                switch (value) {
+                                  0 => 'Auto-detect size',
+                                  58 => '58 mm roll (32 cols)',
+                                  80 => '80 mm roll (48 cols)',
+                                  _ => '$value mm roll',
+                                },
+                              ),
+                            ),
+                          )
+                          .toList(growable: false),
+                      onChanged: (value) =>
+                          setState(() => paperWidth = value ?? paperWidth),
+                    ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Auto print receipts'),
                       value: autoPrint,
                       onChanged: (value) => setState(() => autoPrint = value),
                     ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Automatic cut'),
+                      value: autoCut,
+                      onChanged: (value) => setState(() => autoCut = value),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Open cash drawer after print'),
+                      value: openCashDrawer,
+                      onChanged: (value) =>
+                          setState(() => openCashDrawer = value),
+                    ),
+                    Text('Paper feed: $feedLines lines'),
+                    Slider(
+                      value: feedLines.toDouble(),
+                      min: 0,
+                      max: 8,
+                      divisions: 8,
+                      label: '$feedLines',
+                      onChanged: (value) =>
+                          setState(() => feedLines = value.round()),
+                    ),
                     const SizedBox(height: 4),
-                    if (connectionStatus != null) ...[
+                    if (!isSystemDialogSelected && connectionStatus != null) ...[
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: connectionStatus!.startsWith('Connected')
+                          color: connectionStatus!.startsWith('Connected') ||
+                                  connectionStatus!.startsWith('Auto-configured')
                               ? const Color(0xFFEAF6EA)
                               : const Color(0xFFFFF0EE),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: connectionStatus!.startsWith('Connected')
+                            color: connectionStatus!.startsWith('Connected') ||
+                                    connectionStatus!.startsWith('Auto-configured')
                                 ? const Color(0xFF7BB57A)
                                 : const Color(0xFFD65B57),
                           ),
@@ -1769,7 +2027,8 @@ Future<void> _editPrinterSettings(
                         child: Text(
                           connectionStatus!,
                           style: TextStyle(
-                            color: connectionStatus!.startsWith('Connected')
+                            color: connectionStatus!.startsWith('Connected') ||
+                                    connectionStatus!.startsWith('Auto-configured')
                                 ? const Color(0xFF2F6E30)
                                 : const Color(0xFF9B453F),
                             fontSize: 12,
@@ -1779,45 +2038,51 @@ Future<void> _editPrinterSettings(
                       ),
                       const SizedBox(height: 12),
                     ],
-                    OutlinedButton.icon(
-                      onPressed: checkingConnection
-                          ? null
-                          : () => checkConnection(setState),
-                      icon: checkingConnection
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.wifi_tethering_outlined),
-                      label: Text(
-                        checkingConnection ? 'Checking...' : 'Check connection',
+                    if (!isSystemDialogSelected)
+                      OutlinedButton.icon(
+                        onPressed: checkingConnection
+                            ? null
+                            : () => checkConnection(setState),
+                        icon: checkingConnection
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.wifi_tethering_outlined),
+                        label: Text(
+                          checkingConnection
+                              ? 'Checking...'
+                              : 'Check connection',
+                        ),
                       ),
-                    ),
-                    TextButton.icon(
-                      onPressed: () async {
-                        try {
-                          final selected = await Printing.pickPrinter(
-                            context: dialogContext,
-                          );
-                          if (selected != null) {
+                    if (!isSystemDialogSelected)
+                      TextButton.icon(
+                        onPressed: () async {
+                          try {
+                            final selected = await Printing.pickPrinter(
+                              context: dialogContext,
+                            );
+                            if (selected != null) {
+                              setState(() {
+                                printerController.text = selected.name;
+                                selectedPrinterUrl = selected.url;
+                                connectionStatus =
+                                    'Selected ${selected.name} from system printers.';
+                              });
+                            }
+                          } catch (_) {
                             setState(() {
-                              printerController.text = selected.name;
-                              selectedPrinterUrl = selected.url;
                               connectionStatus =
-                                  'Selected ${selected.name} from system printers.';
+                                  'Printer selection is not available on this device.';
                             });
                           }
-                        } catch (_) {
-                          setState(() {
-                            connectionStatus =
-                                'Printer selection is not available on this device. Enter the printer name manually.';
-                          });
-                        }
-                      },
-                      icon: const Icon(Icons.print_outlined),
-                      label: const Text('Pick printer'),
-                    ),
+                        },
+                        icon: const Icon(Icons.print_outlined),
+                        label: const Text('Pick printer'),
+                      ),
                   ],
                 ),
               ),
@@ -1833,6 +2098,12 @@ Future<void> _editPrinterSettings(
                     printerName: printerController.text,
                     printerUrl: selectedPrinterUrl,
                     autoPrintReceipts: autoPrint,
+                    thermalTransport: transport,
+                    thermalPaperWidth: paperWidth,
+                    thermalFeedLines: feedLines,
+                    thermalAutoCut: autoCut,
+                    thermalOpenCashDrawer: openCashDrawer,
+                    thermalWebKiosk: webKioskPrinting,
                   );
                   Navigator.of(dialogContext).pop();
                 },
@@ -2315,6 +2586,7 @@ class _OrderTicketCard extends StatelessWidget {
     required this.onPrimaryAction,
     required this.secondaryActionLabel,
     required this.onSecondaryAction,
+    this.onPrintTicket,
   });
 
   final String title;
@@ -2328,6 +2600,7 @@ class _OrderTicketCard extends StatelessWidget {
   final VoidCallback onPrimaryAction;
   final String secondaryActionLabel;
   final VoidCallback onSecondaryAction;
+  final VoidCallback? onPrintTicket;
 
   @override
   Widget build(BuildContext context) {
@@ -2373,6 +2646,12 @@ class _OrderTicketCard extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
+                if (onPrintTicket != null)
+                  _TicketActionButton(
+                    label: 'Print Ticket',
+                    icon: Icons.receipt_long_outlined,
+                    onPressed: onPrintTicket!,
+                  ),
                 _TicketActionButton(
                   label: secondaryActionLabel,
                   icon: Icons.check_circle_outline,
@@ -2472,7 +2751,7 @@ class _TicketActionButton extends StatelessWidget {
   }
 }
 
-class _HistoryOrderCard extends StatelessWidget {
+class _HistoryOrderCard extends StatefulWidget {
   const _HistoryOrderCard({
     required this.controller,
     required this.order,
@@ -2484,7 +2763,18 @@ class _HistoryOrderCard extends StatelessWidget {
   final bool compactLandscape;
 
   @override
+  State<_HistoryOrderCard> createState() => _HistoryOrderCardState();
+}
+
+class _HistoryOrderCardState extends State<_HistoryOrderCard> {
+  bool _isPrinting = false;
+
+  @override
   Widget build(BuildContext context) {
+    final order = widget.order;
+    final controller = widget.controller;
+    final compactLandscape = widget.compactLandscape;
+
     return Card(
       child: Padding(
         padding: EdgeInsets.all(compactLandscape ? 12 : 16),
@@ -2522,27 +2812,62 @@ class _HistoryOrderCard extends StatelessWidget {
                 Text('Total: ${_money(_orderSummary(order).total)}'),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: order.status == OrderStatus.paid
+                  onPressed: (order.status == OrderStatus.paid && !_isPrinting)
                       ? () async {
+                          setState(() => _isPrinting = true);
                           final messenger = ScaffoldMessenger.of(context);
                           try {
-                            await controller.printReceipt(order);
-                            messenger.showSnackBar(
-                              SnackBar(content: Text('Printing ${order.id}')),
+                            final printResult = await controller.printReceipt(
+                              order,
+                              manualReprint: true,
                             );
-                          } catch (_) {
+                            final String msg;
+                            if (printResult.status ==
+                                receipt_printer.PrintStatus.submittedToDialog) {
+                              msg = 'Print dialog opened for ${order.id}';
+                            } else if (printResult.isSuccess) {
+                              msg = 'Receipt sent for ${order.id}';
+                            } else if (printResult.status ==
+                                receipt_printer.PrintStatus.unknown) {
+                              msg =
+                                  'Print status unknown. Check printer before reprinting.';
+                            } else if (printResult.status ==
+                                receipt_printer.PrintStatus.canceled) {
+                              msg = 'Print cancelled.';
+                            } else {
+                              msg =
+                                  'Unable to print receipt. Please check the printer connection.';
+                            }
                             messenger.showSnackBar(
-                              SnackBar(
+                              SnackBar(content: Text(msg)),
+                            );
+                          } catch (error, stackTrace) {
+                            debugPrint(
+                              'Receipt print failed for ${order.id}: '
+                              '$error\n$stackTrace',
+                            );
+                            messenger.showSnackBar(
+                              const SnackBar(
                                 content: Text(
-                                  'Receipt print failed for ${order.id}',
+                                  'Unable to print receipt. Please check the printer connection.',
                                 ),
                               ),
                             );
+                          } finally {
+                            if (mounted) {
+                              setState(() => _isPrinting = false);
+                            }
                           }
                         }
                       : null,
-                  icon: const Icon(Icons.receipt_long, size: 16),
-                  label: const Text('Print receipt'),
+                  icon: _isPrinting
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.receipt_long, size: 16),
+                  label: Text(_isPrinting ? 'Printing...' : 'Print receipt'),
                 ),
               ],
             ),
@@ -3056,32 +3381,62 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-Future<bool?> _confirmComplete(BuildContext context, OrderQueueRecord order) {
+Future<bool> _confirmComplete(
+  BuildContext context,
+  OrderQueueRecord order, {
+  required Future<bool> Function() onConfirm,
+}) {
   return showDialog<bool>(
     context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: const Text('Complete ticket?'),
-        content: Text(
-          'Mark ${order.id} as complete and remove it from the in-progress queue?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+    useRootNavigator: true,
+    builder: (dialogContext) {
+      var isCompleting = false;
+      return StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Complete ticket?'),
+          content: Text(
+            'Mark ${order.id} as complete and remove it from the in-progress queue?',
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB5442F),
-              foregroundColor: Colors.white,
+          actions: [
+            TextButton(
+              onPressed: isCompleting
+                  ? null
+                  : () => Navigator.of(
+                      dialogContext,
+                      rootNavigator: true,
+                    ).pop(false),
+              child: const Text('Cancel'),
             ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Complete'),
-          ),
-        ],
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB5442F),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: isCompleting
+                  ? null
+                  : () async {
+                      setDialogState(() => isCompleting = true);
+                      final completed = await onConfirm();
+                      if (dialogContext.mounted) {
+                        Navigator.of(
+                          dialogContext,
+                          rootNavigator: true,
+                        ).pop(completed);
+                      }
+                    },
+              child: isCompleting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Complete'),
+            ),
+          ],
+        ),
       );
     },
-  );
+  ).then((completed) => completed ?? false);
 }
 
 CheckoutSummary _orderSummary(OrderRecord order) {

@@ -59,7 +59,7 @@ class _LoadingScreen extends StatelessWidget {
                 ],
               ),
               child: Image.asset(
-                'assets/bites_and_brew_logo.png',
+                'assets/haven_logo.png',
                 width: 64,
                 height: 64,
                 fit: BoxFit.contain,

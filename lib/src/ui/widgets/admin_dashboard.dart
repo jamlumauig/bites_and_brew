@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../domain/checkout_calculator.dart';
 import '../../domain/coffee_pos_models.dart';
 import '../../state/coffee_pos_controller.dart';
+import '../../utils/category_icon.dart';
 import '../../utils/export_writer.dart';
 
 enum _AdminSection { overview, products, inventory, orders }
@@ -615,8 +616,12 @@ class _ProductCrudPanel extends StatelessWidget {
                         cells: [
                           DataCell(Text(product.name)),
                           DataCell(
-                            Text(
-                              _categoryLabel(controller, product.categoryId),
+                            _CategoryLabel(
+                              category: _categoryForProduct(
+                                controller,
+                                product.categoryId,
+                              ),
+                              fallback: product.categoryId,
                             ),
                           ),
                           DataCell(Text(_money(product.price))),
@@ -1843,12 +1848,14 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
     _badgeController = TextEditingController(text: initial?.badge ?? '');
     _categoryId =
         initial?.categoryId ?? widget.controller.categories.firstOrNull?.id;
-    _modifierGroupIds =
-        (initial?.modifierGroupIds ??
-                widget.controller.defaultModifierGroupIdsForCategory(
-                  _categoryId ?? '',
-                ))
-            .toSet();
+    _modifierGroupIds = initial == null
+        ? widget.controller
+              .defaultModifierGroupIdsForCategory(_categoryId ?? '')
+              .toSet()
+        : widget.controller
+              .modifierGroupsForProduct(initial)
+              .map((group) => group.id)
+              .toSet();
   }
 
   @override
@@ -1888,7 +1895,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog> {
                       .map(
                         (category) => DropdownMenuItem<String>(
                           value: category.id,
-                          child: Text('${category.icon} ${category.name}'),
+                          child: _CategoryLabel(category: category),
                         ),
                       )
                       .toList(growable: false),
@@ -2206,13 +2213,27 @@ CheckoutSummary _orderSummary(OrderRecord order) {
   );
 }
 
-String _categoryLabel(CoffeePosController controller, String categoryId) {
-  for (final category in controller.categories) {
-    if (category.id == categoryId) {
-      return '${category.icon} ${category.name}';
+class _CategoryLabel extends StatelessWidget {
+  const _CategoryLabel({required this.category, this.fallback = ''});
+
+  final Category? category;
+  final String fallback;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = category;
+    if (value == null) {
+      return Text(fallback);
     }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(categoryIconData(value), size: 18),
+        const SizedBox(width: 8),
+        Flexible(child: Text(value.name, overflow: TextOverflow.ellipsis)),
+      ],
+    );
   }
-  return categoryId;
 }
 
 Category? _categoryForProduct(

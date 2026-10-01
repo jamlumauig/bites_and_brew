@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Receipt - ORDER-32</title>
+  <style>
+    @page {
+      size: 80mm auto;
+      margin: 0mm;
+    }
+    @media print {
+      html, body {
+        width: 80mm;
+        margin: 0;
+        padding: 0;
+        background: #fff;
+        color: #000;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .receipt-wrapper {
+        width: 72mm;
+        margin: 0 auto;
+        padding: 2mm 0 4mm 0;
+      }
+    }
+    body {
+      font-family: 'Courier New', Courier, monospace, monospace;
+      font-size: 11.5px;
+      line-height: 1.25;
+      color: #000;
+      margin: 0;
+      padding: 0;
+    }
+    .receipt-wrapper {
+      width: 72mm;
+      margin: 0 auto;
+      padding: 4mm 0;
+      page-break-inside: avoid;
+      page-break-after: avoid;
+    }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .text-left { text-align: left; }
+    .bold { font-weight: bold; }
+    .store-name {
+      font-size: 15px;
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+    .header-line { font-size: 11px; margin-bottom: 1px; }
+    .divider {
+      border-top: 1px dashed #000;
+      margin: 4px 0;
+    }
+    .double-divider {
+      border-top: 1px dashed #000;
+      border-bottom: 1px dashed #000;
+      height: 2px;
+      margin: 4px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11.5px;
+      page-break-inside: avoid;
+    }
+    th, td {
+      padding: 1.5px 0;
+      vertical-align: top;
+    }
+    .col-qty { width: 14%; text-align: left; }
+    .col-desc { width: 56%; text-align: left; word-break: break-word; }
+    .col-amt { width: 30%; text-align: right; white-space: nowrap; }
+    .modifier {
+      font-size: 10px;
+      color: #333;
+      padding-left: 6px;
+    }
+    .total-row td {
+      font-size: 14px;
+      font-weight: bold;
+      padding: 3px 0;
+    }
+    .footer-text {
+      font-size: 10.5px;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="receipt-wrapper">
+    <div class="text-center">
+      <div class="store-name">Haven &amp; Co.</div>
+      <div class="header-line">Ragan Sur, Delfin Albano Isabela</div>
+      <div class="header-line bold">Thank you for your order</div>
+    </div>
+    <div class="divider"></div>
+<div class="bold">Order #32 • Take-out</div>
+<div>2026-10-01 16:50 • Jam</div>
+<div class="divider"></div>
+    <table>
+      <thead>
+        <tr style="border-bottom: 1px dashed #000;">
+          <th class="col-qty">QTY</th>
+          <th class="col-desc">ITEM</th>
+          <th class="col-amt">AMOUNT</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="col-qty">1x</td>
+          <td class="col-desc">
+            Espresso
+            <div class="modifier">+ Extra Shot (+₱20.00)</div>
+          </td>
+          <td class="col-amt">89.00</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="divider"></div>
+    <table>
+    </table>
+    <div class="double-divider"></div>
+    <table>
+      <tr class="total-row">
+        <td>TOTAL DUE</td>
+        <td class="text-right">₱89.00</td>
+      </tr>
+    </table>
+    <div class="divider"></div>
+    <table>
+      <tr><td>Payment Method</td><td class="text-right">CARD</td></tr>
+    </table>
+    <div class="divider"></div>
+    <div class="text-center footer-text">
+      <div>Visit us again soon.</div>
+    </div>
+<div class="text-center" style="margin:2px 0">- - - ✂ CUT HERE ✂ - - -</div>
+<section class="kitchen-copy"><div class="bold">ORDER #32 • TAKE-OUT • 4:50 PM</div>
+<div class="divider"></div>
+<div class="bold">1x ESPRESSO • 16 OZ</div>
+<div class="modifier">REGULAR MILK • EXTRA SHOT</div>
+<div class="divider"></div><div class="text-center bold">END OF ORDER</div></section>
+
+  </div>
+</body>
+</html>

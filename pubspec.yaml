@@ -45,6 +45,7 @@ dependencies:
   pdf: ^3.12.0
   firebase_database: ^11.3.10
   cloud_functions: ^5.6.2
+  firebase_data_connect: ^0.1.5+4
 
 dev_dependencies:
   flutter_test:
@@ -69,7 +70,9 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/bites_and_brew_logo.png
+    - assets/haven_logo.png
+    - assets/fonts/NotoSans-Regular.ttf
+    - assets/fonts/NotoSans-Bold.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:
