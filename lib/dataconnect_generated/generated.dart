@@ -1,5 +1,4 @@
 library dataconnect_generated;
-
 import 'package:firebase_data_connect/firebase_data_connect.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
@@ -22,42 +21,59 @@ part 'list_all_products.dart';
 
 part 'list_customer_orders.dart';
 
+
+
+
+
+
+
 class ExampleConnector {
-  CreateProductsVariablesBuilder createProducts() {
-    return CreateProductsVariablesBuilder(dataConnect);
+  
+  
+  CreateProductsVariablesBuilder createProducts () {
+    return CreateProductsVariablesBuilder(dataConnect, );
   }
-
-  CreateCustomersVariablesBuilder createCustomers() {
-    return CreateCustomersVariablesBuilder(dataConnect);
+  
+  
+  CreateCustomersVariablesBuilder createCustomers () {
+    return CreateCustomersVariablesBuilder(dataConnect, );
   }
-
-  CreateStoresVariablesBuilder createStores() {
-    return CreateStoresVariablesBuilder(dataConnect);
+  
+  
+  CreateStoresVariablesBuilder createStores () {
+    return CreateStoresVariablesBuilder(dataConnect, );
   }
-
-  CreateOrdersVariablesBuilder createOrders() {
-    return CreateOrdersVariablesBuilder(dataConnect);
+  
+  
+  CreateOrdersVariablesBuilder createOrders () {
+    return CreateOrdersVariablesBuilder(dataConnect, );
   }
-
-  UpdateProductVariablesBuilder updateProduct({required String id}) {
-    return UpdateProductVariablesBuilder(dataConnect, id: id);
+  
+  
+  UpdateProductVariablesBuilder updateProduct ({required String id, }) {
+    return UpdateProductVariablesBuilder(dataConnect, id: id,);
   }
-
-  DeleteProductVariablesBuilder deleteProduct({required String id}) {
-    return DeleteProductVariablesBuilder(dataConnect, id: id);
+  
+  
+  DeleteProductVariablesBuilder deleteProduct ({required String id, }) {
+    return DeleteProductVariablesBuilder(dataConnect, id: id,);
   }
-
-  GetProductVariablesBuilder getProduct({required String id}) {
-    return GetProductVariablesBuilder(dataConnect, id: id);
+  
+  
+  GetProductVariablesBuilder getProduct ({required String id, }) {
+    return GetProductVariablesBuilder(dataConnect, id: id,);
   }
-
-  ListAllProductsVariablesBuilder listAllProducts() {
-    return ListAllProductsVariablesBuilder(dataConnect);
+  
+  
+  ListAllProductsVariablesBuilder listAllProducts () {
+    return ListAllProductsVariablesBuilder(dataConnect, );
   }
-
-  ListCustomerOrdersVariablesBuilder listCustomerOrders() {
-    return ListCustomerOrdersVariablesBuilder(dataConnect);
+  
+  
+  ListCustomerOrdersVariablesBuilder listCustomerOrders () {
+    return ListCustomerOrdersVariablesBuilder(dataConnect, );
   }
+  
 
   static ConnectorConfig connectorConfig = ConnectorConfig(
     'us-east1',
@@ -67,12 +83,19 @@ class ExampleConnector {
 
   ExampleConnector({required this.dataConnect});
   static ExampleConnector get instance {
-    return ExampleConnector(
-      dataConnect: FirebaseDataConnect.instanceFor(
-        connectorConfig: connectorConfig,
-        sdkType: CallerSDKType.generated,
-      ),
+    
+    CacheSettings cacheSettings = CacheSettings(
+      maxAge: Duration(milliseconds:0),
+      storage: CacheStorage.persistent,
     );
+    
+    return ExampleConnector(
+        dataConnect: FirebaseDataConnect.instanceFor(
+            connectorConfig: connectorConfig,
+            
+            cacheSettings: cacheSettings,
+            
+            sdkType: CallerSDKType.generated));
   }
 
   FirebaseDataConnect dataConnect;

@@ -1,3 +1,4 @@
+import '../domain/order_lifecycle.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -426,12 +427,15 @@ class CoffeePosController extends ChangeNotifier {
     _currencyCode = json['currencyCode'] as String? ?? _currencyCode;
     _currencySymbol = json['currencySymbol'] as String? ?? _currencySymbol;
     final loadedPrinterName = json['printerName'] as String?;
-    _printerName = (loadedPrinterName == null || loadedPrinterName == 'Kitchen Printer')
+    _printerName =
+        (loadedPrinterName == null || loadedPrinterName == 'Kitchen Printer')
         ? 'GEZHI_micro_printer'
         : loadedPrinterName;
     _printerUrl = json['printerUrl'] as String? ?? _printerUrl;
-    _kitchenPrinterName = json['kitchenPrinterName'] as String? ?? _kitchenPrinterName;
-    _kitchenPrinterUrl = json['kitchenPrinterUrl'] as String? ?? _kitchenPrinterUrl;
+    _kitchenPrinterName =
+        json['kitchenPrinterName'] as String? ?? _kitchenPrinterName;
+    _kitchenPrinterUrl =
+        json['kitchenPrinterUrl'] as String? ?? _kitchenPrinterUrl;
     _autoPrintReceipts =
         json['autoPrintReceipts'] as bool? ?? _autoPrintReceipts;
     final loadedTransport = json['thermalTransport'] as String?;
@@ -439,9 +443,10 @@ class CoffeePosController extends ChangeNotifier {
     _thermalWebKiosk = json['thermalWebKiosk'] as bool? ?? _thermalWebKiosk;
     final savedPaperWidth = json['thermalPaperWidth'] as int?;
     _thermalPaperWidth = switch (savedPaperWidth) {
-      50 || 58 || 80 => (_printerName == 'GEZHI_micro_printer' && savedPaperWidth == 50)
-          ? 80
-          : savedPaperWidth!,
+      50 || 58 || 80 =>
+        (_printerName == 'GEZHI_micro_printer' && savedPaperWidth == 50)
+            ? 80
+            : savedPaperWidth!,
       _ => _thermalPaperWidth,
     };
     _thermalFeedLines = json['thermalFeedLines'] as int? ?? _thermalFeedLines;
@@ -1027,23 +1032,95 @@ class CoffeePosController extends ChangeNotifier {
         .where((item) => item.id != order.id)
         .toList(growable: false);
     unawaited(_saveCurrentStateSnapshot());
-    unawaited(_saveSharedOrders());
+    unawaited(_removeSharedActiveOrder(order.id));
     notifyListeners();
   }
 
-  Future<bool> completeOrder(OrderQueueRecord order) {
-    final index = _activeOrders.indexWhere((item) => item.id == order.id);
-    if (index == -1) {
-      return Future<bool>.value(false);
-    }
-    _activeOrders = List<OrderQueueRecord>.from(_activeOrders)..removeAt(index);
-    notifyListeners();
+  final Set<String> _changingOrderIds = {};
 
-    // Do not block the UI on local or shared persistence. Both writes are
-    // durable best-effort work and can wait for Firebase connectivity.
-    unawaited(_saveCurrentStateSnapshot());
-    unawaited(_removeSharedActiveOrder(order.id));
-    return Future<bool>.value(true);
+  OrderRecord? transactionForQueue(OrderQueueRecord queue) {
+    final id = OrderLifecycle.transactionId(queue.id);
+    for (final order in _recentOrders) {
+      if (order.id == id) return order;
+    }
+    return null;
+  }
+
+  Future<bool> completeOrder(OrderQueueRecord order) => changeOrderStatus(
+    order,
+    action: OrderAction.complete,
+    reason: 'Order completed',
+  );
+
+  Future<bool> changeOrderStatus(
+    OrderQueueRecord order, {
+    required OrderAction action,
+    required String reason,
+    double? expectedRefundAmount,
+  }) async {
+    if (!_changingOrderIds.add(order.id)) return false;
+    try {
+      final at = DateTime.now();
+      Map<String, dynamic> transition(Map<String, dynamic> state) =>
+          OrderLifecycle.apply(
+            state,
+            queueId: order.id,
+            action: action,
+            reason: reason,
+            userId: _currentUserId ?? 'local',
+            cashierName: _cashierName,
+            at: at,
+            expectedRefundAmount: expectedRefundAmount,
+          );
+      // Check locally before opening a database transaction. The transaction
+      // repeats these checks against current shared state to reject stale taps.
+      var updated = transition(_sharedOrdersJson());
+      if (Firebase.apps.isNotEmpty && _currentUserId != null) {
+        await _sharedOrdersReference.get();
+        String? failure;
+        final result = await _sharedOrdersReference.runTransaction((value) {
+          if (value is! Map) return Transaction.abort();
+          try {
+            final next = transition(Map<String, dynamic>.from(value));
+            next['updatedAt'] = ServerValue.timestamp;
+            return Transaction.success(next);
+          } on StateError catch (error) {
+            failure = error.message;
+            return Transaction.abort();
+          }
+        }, applyLocally: false);
+        if (!result.committed || result.snapshot.value is! Map) {
+          throw StateError(
+            failure ??
+                'Order status could not be saved. Refresh and try again.',
+          );
+        }
+        updated = Map<String, dynamic>.from(result.snapshot.value as Map);
+      } else {
+        // Offline/local mode must persist successfully before reporting success.
+        await flushPersistence();
+        final prefs = await SharedPreferences.getInstance();
+        final snapshot =
+            jsonDecode(exportStateJson(pretty: false)) as Map<String, dynamic>;
+        snapshot.addAll({
+          'activeOrders': updated['activeOrders'],
+          'recentOrders': updated['recentOrders'],
+          'todaySales': updated['todaySales'],
+        });
+        if (!await prefs.setString(
+          _scopedPreferenceKey(_resetSnapshotPreferenceKey),
+          jsonEncode(snapshot),
+        )) {
+          throw StateError('Order status could not be saved. Try again.');
+        }
+      }
+      _applySharedOrders(updated);
+      notifyListeners();
+      await _saveCurrentStateSnapshot();
+      return true;
+    } finally {
+      _changingOrderIds.remove(order.id);
+    }
   }
 
   void updateDiscount(double value) {
@@ -1174,11 +1251,15 @@ class CoffeePosController extends ChangeNotifier {
 
   /// Returns the effective paper width, resolving 0 (AUTO) using printer hints or safe 80mm fallback.
   int get effectiveThermalPaperWidth {
-    if (_thermalPaperWidth == 58 || _thermalPaperWidth == 80 || _thermalPaperWidth == 50) {
+    if (_thermalPaperWidth == 58 ||
+        _thermalPaperWidth == 80 ||
+        _thermalPaperWidth == 50) {
       return _thermalPaperWidth;
     }
     final lower = _printerName.toLowerCase();
-    if (lower.contains('58') || lower.contains('2inch') || lower.contains('58mm')) {
+    if (lower.contains('58') ||
+        lower.contains('2inch') ||
+        lower.contains('58mm')) {
       return 58;
     }
     return 80;
@@ -1198,7 +1279,9 @@ class CoffeePosController extends ChangeNotifier {
         _thermalTransport = 'Direct print (no prompt)';
         if (force || _thermalPaperWidth == 0) {
           final lower = detected.name.toLowerCase();
-          if (lower.contains('58') || lower.contains('2inch') || lower.contains('58mm')) {
+          if (lower.contains('58') ||
+              lower.contains('2inch') ||
+              lower.contains('58mm')) {
             _thermalPaperWidth = 58;
           } else {
             _thermalPaperWidth = 80;
@@ -1522,10 +1605,16 @@ class CoffeePosController extends ChangeNotifier {
       return false;
     }
     try {
-      await _sharedOrdersReference
-          .set(_sharedOrdersJson())
+      final incoming = _sharedOrdersJson();
+      final result = await _sharedOrdersReference
+          .runTransaction((value) {
+            if (value is! Map) return Transaction.success(incoming);
+            return Transaction.success(
+              OrderLifecycle.merge(Map<String, dynamic>.from(value), incoming),
+            );
+          }, applyLocally: false)
           .timeout(const Duration(seconds: 3));
-      return true;
+      return result.committed;
     } catch (_) {
       // The user's local snapshot remains available if sync fails.
       return false;
@@ -1857,8 +1946,9 @@ class CoffeePosController extends ChangeNotifier {
 
   Future<bool> isPrinterAvailable() {
     final config = receipt_printer.PrinterConfig(
-      paperWidth:
-          receipt_printer.PaperWidth.fromInt(effectiveThermalPaperWidth),
+      paperWidth: receipt_printer.PaperWidth.fromInt(
+        effectiveThermalPaperWidth,
+      ),
       transport: receipt_printer.ThermalTransport.fromString(_thermalTransport),
       printerName: _printerName,
       printerUrl: _printerUrl,
@@ -1868,7 +1958,9 @@ class CoffeePosController extends ChangeNotifier {
       compactReceiptStyle: _compactReceiptStyle,
       webKioskPrinting: _thermalWebKiosk,
     );
-    return receipt_printer.ThermalPrinterService.instance.isPrinterAvailable(config);
+    return receipt_printer.ThermalPrinterService.instance.isPrinterAvailable(
+      config,
+    );
   }
 
   @override

@@ -13,6 +13,7 @@ import '../../state/coffee_pos_controller.dart';
 import '../../utils/receipt_printer.dart' as receipt_printer;
 import 'admin_dashboard.dart';
 import 'cashier_dashboard.dart';
+import 'order_status_dialog.dart';
 
 enum _ShellSection {
   cashier,
@@ -179,18 +180,12 @@ class _SectionHost extends StatelessWidget {
               onNavigate(_ShellSection.cashier);
             },
             onView: (order) => _showOrderDetails(context, order),
-            onComplete: (order) async {
-              final completed = await _confirmComplete(
-                context,
-                order,
-                onConfirm: () => controller.completeOrder(order),
-              );
-              if (completed && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${order.id} marked as complete')),
-                );
-              }
-            },
+            onComplete: (order) => _changeOrderStatus(
+              context,
+              controller,
+              order,
+              OrderAction.complete,
+            ),
           ),
           _ShellSection.orders => _OrderHistoryPage(
             key: const ValueKey('orders'),
@@ -768,7 +763,7 @@ class _InProgressOrdersPage extends StatelessWidget {
       padding: EdgeInsets.zero,
       children: [
         _PageHeader(
-          title: 'On-Progress Orders',
+          title: 'In Progress Orders',
           subtitle: 'Pending, preparing, held, and awaiting payment tickets.',
           compactLandscape: compactLandscape,
           trailing: _CountPill(count: activeOrders.length, label: 'active'),
@@ -785,7 +780,7 @@ class _InProgressOrdersPage extends StatelessWidget {
             (order) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: _OrderTicketCard(
-                title: order.id,
+                title: 'Order #${order.sequence}',
                 subtitle: '${order.orderType}  •  ${order.customerName}',
                 status: _queueStatusText(order.status),
                 time: _formatTime(context, order.createdAt),
@@ -793,7 +788,9 @@ class _InProgressOrdersPage extends StatelessWidget {
                   0,
                   (sum, item) => sum + item.quantity,
                 ),
-                total: order.subtotal,
+                total:
+                    controller.transactionForQueue(order)?.total ??
+                    order.subtotal,
                 compactLandscape: compactLandscape,
                 primaryActionLabel: order.status == OrderQueueStatus.held
                     ? 'Continue Order'
@@ -801,6 +798,22 @@ class _InProgressOrdersPage extends StatelessWidget {
                 onPrimaryAction: order.status == OrderQueueStatus.held
                     ? () => onContinue(order)
                     : () => onView(order),
+                onCancel: () => _changeOrderStatus(
+                  context,
+                  controller,
+                  order,
+                  OrderAction.cancel,
+                ),
+                onRefund:
+                    controller.transactionForQueue(order)?.status ==
+                        OrderStatus.paid
+                    ? () => _changeOrderStatus(
+                        context,
+                        controller,
+                        order,
+                        OrderAction.refund,
+                      )
+                    : null,
                 secondaryActionLabel: 'Complete',
                 onSecondaryAction: () => onComplete(order),
                 onPrintTicket: () async {
@@ -810,7 +823,9 @@ class _InProgressOrdersPage extends StatelessWidget {
                     if (result.isSuccess) {
                       messenger.showSnackBar(
                         SnackBar(
-                          content: Text('Preparation ticket printed for ${order.id}'),
+                          content: Text(
+                            'Preparation ticket printed for ${order.id}',
+                          ),
                         ),
                       );
                     } else {
@@ -864,7 +879,13 @@ class _OrderHistoryPageState extends State<_OrderHistoryPage> {
               order.createdAt,
               DateTime.now(),
             ),
-            _OrderHistoryFilter.completed => order.status == OrderStatus.paid,
+            _OrderHistoryFilter.completed =>
+              order.status == OrderStatus.paid &&
+                  !widget.controller.activeOrders.any(
+                    (queue) =>
+                        widget.controller.transactionForQueue(queue)?.id ==
+                        order.id,
+                  ),
             _OrderHistoryFilter.cancelled => order.status == OrderStatus.voided,
             _OrderHistoryFilter.refunded =>
               order.status == OrderStatus.refunded,
@@ -1709,7 +1730,8 @@ Future<void> _editPrinterSettings(
   bool webKioskPrinting = controller.thermalWebKiosk;
   String? connectionStatus;
   bool checkingConnection = false;
-  final isSystemDialogSelected = transport == 'System dialog' &&
+  final isSystemDialogSelected =
+      transport == 'System dialog' &&
       (kIsWeb || defaultTargetPlatform == TargetPlatform.android);
 
   Future<void> checkConnection(StateSetter setState) async {
@@ -1815,10 +1837,12 @@ Future<void> _editPrinterSettings(
                                 checkingConnection = true;
                                 connectionStatus = null;
                               });
-                              final success = await controller.autoConfigurePrinter(force: true);
+                              final success = await controller
+                                  .autoConfigurePrinter(force: true);
                               if (success) {
                                 setState(() {
-                                  printerController.text = controller.printerName;
+                                  printerController.text =
+                                      controller.printerName;
                                   selectedPrinterUrl = controller.printerUrl;
                                   transport = controller.thermalTransport;
                                   paperWidth = controller.thermalPaperWidth;
@@ -1877,19 +1901,20 @@ Future<void> _editPrinterSettings(
                       decoration: const InputDecoration(
                         labelText: 'Connection method',
                       ),
-                      items: const [
-                        'Direct print (no prompt)',
-                        'System dialog',
-                        'Thermal printer app',
-                        'Network (ESC/POS)',
-                      ]
-                          .map(
-                            (value) => DropdownMenuItem(
-                              value: value,
-                              child: Text(value),
-                            ),
-                          )
-                          .toList(growable: false),
+                      items:
+                          const [
+                                'Direct print (no prompt)',
+                                'System dialog',
+                                'Thermal printer app',
+                                'Network (ESC/POS)',
+                              ]
+                              .map(
+                                (value) => DropdownMenuItem(
+                                  value: value,
+                                  child: Text(value),
+                                ),
+                              )
+                              .toList(growable: false),
                       onChanged: (value) =>
                           setState(() => transport = value ?? transport),
                     ),
@@ -1901,7 +1926,9 @@ Future<void> _editPrinterSettings(
                               ? 'Native macOS app prints directly to GEZHI_micro_printer via CUPS with zero prompts.\nIn Chrome browser, direct silent printing requires Chrome Kiosk Mode (--kiosk-printing) or a local bridge daemon.'
                               : 'Sends receipts directly to your connected thermal printer silently with zero print dialog prompts.',
                           style: TextStyle(
-                            color: kIsWeb ? const Color(0xFF6B4423) : const Color(0xFF2E6B30),
+                            color: kIsWeb
+                                ? const Color(0xFF6B4423)
+                                : const Color(0xFF2E6B30),
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -1910,16 +1937,18 @@ Future<void> _editPrinterSettings(
                       if (kIsWeb)
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text('Chrome Kiosk Mode (--kiosk-printing)'),
+                          title: const Text(
+                            'Chrome Kiosk Mode (--kiosk-printing)',
+                          ),
                           subtitle: const Text(
                             'Enable if Chrome is running with --kiosk-printing for silent browser printing.',
                             style: TextStyle(fontSize: 11),
                           ),
                           value: webKioskPrinting,
-                          onChanged: (val) => setState(() => webKioskPrinting = val),
+                          onChanged: (val) =>
+                              setState(() => webKioskPrinting = val),
                         ),
-                    ]
-                    else if (transport == 'Network (ESC/POS)') ...[
+                    ] else if (transport == 'Network (ESC/POS)') ...[
                       const SizedBox(height: 8),
                       TextFormField(
                         initialValue: selectedPrinterUrl,
@@ -1963,14 +1992,12 @@ Future<void> _editPrinterSettings(
                           .map(
                             (value) => DropdownMenuItem(
                               value: value,
-                              child: Text(
-                                switch (value) {
-                                  0 => 'Auto-detect size',
-                                  58 => '58 mm roll (32 cols)',
-                                  80 => '80 mm roll (48 cols)',
-                                  _ => '$value mm roll',
-                                },
-                              ),
+                              child: Text(switch (value) {
+                                0 => 'Auto-detect size',
+                                58 => '58 mm roll (32 cols)',
+                                80 => '80 mm roll (48 cols)',
+                                _ => '$value mm roll',
+                              }),
                             ),
                           )
                           .toList(growable: false),
@@ -2007,19 +2034,26 @@ Future<void> _editPrinterSettings(
                           setState(() => feedLines = value.round()),
                     ),
                     const SizedBox(height: 4),
-                    if (!isSystemDialogSelected && connectionStatus != null) ...[
+                    if (!isSystemDialogSelected &&
+                        connectionStatus != null) ...[
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: connectionStatus!.startsWith('Connected') ||
-                                  connectionStatus!.startsWith('Auto-configured')
+                          color:
+                              connectionStatus!.startsWith('Connected') ||
+                                  connectionStatus!.startsWith(
+                                    'Auto-configured',
+                                  )
                               ? const Color(0xFFEAF6EA)
                               : const Color(0xFFFFF0EE),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: connectionStatus!.startsWith('Connected') ||
-                                    connectionStatus!.startsWith('Auto-configured')
+                            color:
+                                connectionStatus!.startsWith('Connected') ||
+                                    connectionStatus!.startsWith(
+                                      'Auto-configured',
+                                    )
                                 ? const Color(0xFF7BB57A)
                                 : const Color(0xFFD65B57),
                           ),
@@ -2027,8 +2061,11 @@ Future<void> _editPrinterSettings(
                         child: Text(
                           connectionStatus!,
                           style: TextStyle(
-                            color: connectionStatus!.startsWith('Connected') ||
-                                    connectionStatus!.startsWith('Auto-configured')
+                            color:
+                                connectionStatus!.startsWith('Connected') ||
+                                    connectionStatus!.startsWith(
+                                      'Auto-configured',
+                                    )
                                 ? const Color(0xFF2F6E30)
                                 : const Color(0xFF9B453F),
                             fontSize: 12,
@@ -2587,6 +2624,8 @@ class _OrderTicketCard extends StatelessWidget {
     required this.secondaryActionLabel,
     required this.onSecondaryAction,
     this.onPrintTicket,
+    this.onCancel,
+    this.onRefund,
   });
 
   final String title;
@@ -2601,6 +2640,8 @@ class _OrderTicketCard extends StatelessWidget {
   final String secondaryActionLabel;
   final VoidCallback onSecondaryAction;
   final VoidCallback? onPrintTicket;
+  final VoidCallback? onCancel;
+  final VoidCallback? onRefund;
 
   @override
   Widget build(BuildContext context) {
@@ -2646,6 +2687,20 @@ class _OrderTicketCard extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
+                if (onCancel != null)
+                  _TicketActionButton(
+                    label: 'Cancel Order',
+                    icon: Icons.cancel_outlined,
+                    onPressed: onCancel!,
+                    destructive: true,
+                  ),
+                if (onRefund != null)
+                  _TicketActionButton(
+                    label: 'Refund',
+                    icon: Icons.currency_exchange,
+                    onPressed: onRefund!,
+                    destructive: true,
+                  ),
                 if (onPrintTicket != null)
                   _TicketActionButton(
                     label: 'Print Ticket',
@@ -2799,13 +2854,35 @@ class _HistoryOrderCardState extends State<_HistoryOrderCard> {
                     ],
                   ),
                 ),
-                Text(order.status.name.toUpperCase()),
+                Text(
+                  order.status == OrderStatus.voided
+                      ? 'CANCELLED'
+                      : order.status == OrderStatus.paid &&
+                            order.statusHistory.any(
+                              (entry) => entry.action == OrderAction.complete,
+                            )
+                      ? 'COMPLETED'
+                      : order.status.name.toUpperCase(),
+                ),
               ],
             ),
             const SizedBox(height: 12),
             Text('Cashier: ${order.cashierName}'),
             Text('Payment: ${order.paymentType.name.toUpperCase()}'),
             Text('Items: ${order.items.length}'),
+            for (final change in order.statusHistory) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${switch (change.action) {
+                  OrderAction.complete => 'Completed',
+                  OrderAction.cancel => 'Cancelled',
+                  OrderAction.refund => 'Refunded',
+                }} by ${change.cashierName} • ${_formatDateTime(context, change.at)}',
+              ),
+              if (change.action == OrderAction.refund)
+                Text('Refund amount: ${_money(change.amount)}'),
+              if (change.reason.isNotEmpty) Text('Reason: ${change.reason}'),
+            ],
             const SizedBox(height: 8),
             Row(
               children: [
@@ -3381,62 +3458,41 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-Future<bool> _confirmComplete(
+Future<void> _changeOrderStatus(
   BuildContext context,
-  OrderQueueRecord order, {
-  required Future<bool> Function() onConfirm,
-}) {
-  return showDialog<bool>(
+  CoffeePosController controller,
+  OrderQueueRecord order,
+  OrderAction action,
+) async {
+  final amount = controller.transactionForQueue(order)?.total ?? order.subtotal;
+  final changed = await showDialog<bool>(
     context: context,
-    useRootNavigator: true,
-    builder: (dialogContext) {
-      var isCompleting = false;
-      return StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Complete ticket?'),
-          content: Text(
-            'Mark ${order.id} as complete and remove it from the in-progress queue?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: isCompleting
-                  ? null
-                  : () => Navigator.of(
-                      dialogContext,
-                      rootNavigator: true,
-                    ).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFB5442F),
-                foregroundColor: Colors.white,
-              ),
-              onPressed: isCompleting
-                  ? null
-                  : () async {
-                      setDialogState(() => isCompleting = true);
-                      final completed = await onConfirm();
-                      if (dialogContext.mounted) {
-                        Navigator.of(
-                          dialogContext,
-                          rootNavigator: true,
-                        ).pop(completed);
-                      }
-                    },
-              child: isCompleting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Complete'),
-            ),
-          ],
+    barrierDismissible: false,
+    builder: (_) => OrderStatusDialog(
+      action: action,
+      orderNumber: order.sequence,
+      amount: amount,
+      onConfirm: (reason) => controller.changeOrderStatus(
+        order,
+        action: action,
+        reason: reason,
+        expectedRefundAmount: action == OrderAction.refund ? amount : null,
+      ),
+    ),
+  );
+  if (changed == true && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Order #${order.sequence} ${switch (action) {
+            OrderAction.complete => 'completed',
+            OrderAction.cancel => 'cancelled',
+            OrderAction.refund => 'refunded',
+          }}. Saved in order history.',
         ),
-      );
-    },
-  ).then((completed) => completed ?? false);
+      ),
+    );
+  }
 }
 
 CheckoutSummary _orderSummary(OrderRecord order) {

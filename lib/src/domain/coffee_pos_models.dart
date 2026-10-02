@@ -107,7 +107,12 @@ class StoreBootstrap {
         id: 'drink-size',
         name: 'Drink size',
         options: <ModifierOption>[
-          ModifierOption(id: '16oz', name: '16 oz', priceDelta: 0, isDefault: true),
+          ModifierOption(
+            id: '16oz',
+            name: '16 oz',
+            priceDelta: 0,
+            isDefault: true,
+          ),
           ModifierOption(id: '22oz', name: '22 oz', priceDelta: 32),
         ],
         minSelected: 1,
@@ -117,7 +122,12 @@ class StoreBootstrap {
         id: 'snack-size',
         name: 'Snack size',
         options: <ModifierOption>[
-          ModifierOption(id: 'small', name: 'Small', priceDelta: 0, isDefault: true),
+          ModifierOption(
+            id: 'small',
+            name: 'Small',
+            priceDelta: 0,
+            isDefault: true,
+          ),
           ModifierOption(id: 'large', name: 'Large', priceDelta: 20),
         ],
         minSelected: 1,
@@ -127,7 +137,12 @@ class StoreBootstrap {
         id: 'milk',
         name: 'Milk',
         options: <ModifierOption>[
-          ModifierOption(id: 'regular', name: 'Regular Milk', priceDelta: 0, isDefault: true),
+          ModifierOption(
+            id: 'regular',
+            name: 'Regular Milk',
+            priceDelta: 0,
+            isDefault: true,
+          ),
           ModifierOption(id: 'oat', name: 'Oat Milk', priceDelta: 26),
           ModifierOption(id: 'almond', name: 'Almond Milk', priceDelta: 22),
         ],
@@ -553,7 +568,9 @@ class CartLineInput {
     'unitPrice': unitPrice,
     'modifierLabels': modifierLabels,
     'lineTotal': lineTotal,
-    'selectedModifiers': selectedModifiers.map((item) => item.toJson()).toList(growable: false),
+    'selectedModifiers': selectedModifiers
+        .map((item) => item.toJson())
+        .toList(growable: false),
   };
 
   factory CartLineInput.fromJson(Map<String, dynamic> json) {
@@ -566,7 +583,10 @@ class CartLineInput {
       unitPrice: _numValue(json['unitPrice']),
       modifierLabels: _readStringList(json['modifierLabels']),
       lineTotal: _numValue(json['lineTotal']),
-      selectedModifiers: _readList(json['selectedModifiers'], SelectedModifier.fromJson),
+      selectedModifiers: _readList(
+        json['selectedModifiers'],
+        SelectedModifier.fromJson,
+      ),
     );
   }
 }
@@ -670,7 +690,9 @@ class OrderLineSnapshot {
     'quantity': quantity,
     'modifierLabels': modifierLabels,
     'lineTotal': lineTotal,
-    'selectedModifiers': selectedModifiers.map((item) => item.toJson()).toList(growable: false),
+    'selectedModifiers': selectedModifiers
+        .map((item) => item.toJson())
+        .toList(growable: false),
   };
 
   factory OrderLineSnapshot.fromJson(Map<String, dynamic> json) {
@@ -682,7 +704,10 @@ class OrderLineSnapshot {
       quantity: _intValue(json['quantity'], 1),
       modifierLabels: _readStringList(json['modifierLabels']),
       lineTotal: _numValue(json['lineTotal']),
-      selectedModifiers: _readList(json['selectedModifiers'], SelectedModifier.fromJson),
+      selectedModifiers: _readList(
+        json['selectedModifiers'],
+        SelectedModifier.fromJson,
+      ),
     );
   }
 }
@@ -815,6 +840,48 @@ class CustomerProfile {
   }
 }
 
+enum OrderAction { complete, cancel, refund }
+
+class OrderStatusChange {
+  const OrderStatusChange({
+    required this.action,
+    required this.reason,
+    required this.userId,
+    required this.cashierName,
+    required this.at,
+    this.amount = 0,
+  });
+  final OrderAction action;
+  final String reason;
+  final String userId;
+  final String cashierName;
+  final DateTime at;
+  final double amount;
+  Map<String, dynamic> toJson() => {
+    'action': action.name,
+    'reason': reason,
+    'userId': userId,
+    'cashierName': cashierName,
+    'at': at.toIso8601String(),
+    'amount': amount,
+  };
+  factory OrderStatusChange.fromJson(Map<String, dynamic> json) =>
+      OrderStatusChange(
+        action: _enumFromName(
+          OrderAction.values,
+          json['action'] as String?,
+          OrderAction.complete,
+        ),
+        reason: json['reason'] as String? ?? '',
+        userId: json['userId'] as String? ?? '',
+        cashierName: json['cashierName'] as String? ?? '',
+        at:
+            DateTime.tryParse(json['at'] as String? ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+        amount: _numValue(json['amount']),
+      );
+}
+
 class OrderRecord {
   const OrderRecord({
     required this.id,
@@ -842,7 +909,12 @@ class OrderRecord {
     this.totalDiscount = 0,
     this.discountApplication = const DiscountApplication.none(),
     this.vatEnabled = true,
+    this.statusHistory = const [],
+    this.originalQueue,
   });
+
+  final List<OrderStatusChange> statusHistory;
+  final OrderQueueRecord? originalQueue;
 
   final String id;
   final int sequence;
@@ -925,6 +997,8 @@ class OrderRecord {
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
+    'statusHistory': statusHistory.map((entry) => entry.toJson()).toList(),
+    if (originalQueue != null) 'originalQueue': originalQueue!.toJson(),
     'id': id,
     'sequence': sequence,
     'status': status.name,
@@ -954,6 +1028,15 @@ class OrderRecord {
 
   factory OrderRecord.fromJson(Map<String, dynamic> json) {
     return OrderRecord(
+      statusHistory: _readList(
+        json['statusHistory'],
+        OrderStatusChange.fromJson,
+      ),
+      originalQueue: json['originalQueue'] is Map
+          ? OrderQueueRecord.fromJson(
+              Map<String, dynamic>.from(json['originalQueue'] as Map),
+            )
+          : null,
       id: json['id'] as String? ?? '',
       sequence: _intValue(json['sequence']),
       status: _enumFromName(
@@ -992,7 +1075,8 @@ class OrderRecord {
               Map<String, dynamic>.from(json['discountApplication'] as Map),
             )
           : const DiscountApplication.none(),
-      vatEnabled: json['vatEnabled'] as bool? ??
+      vatEnabled:
+          json['vatEnabled'] as bool? ??
           (_numValue(json['tax']) > 0 || _numValue(json['vatableSales']) > 0),
     );
   }
