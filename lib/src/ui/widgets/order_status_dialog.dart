@@ -11,7 +11,7 @@ class OrderStatusDialog extends StatefulWidget {
     required this.onConfirm,
   });
   final OrderAction action;
-  final int orderNumber;
+  final Object orderNumber;
   final double amount;
   final Future<bool> Function(String reason) onConfirm;
   @override

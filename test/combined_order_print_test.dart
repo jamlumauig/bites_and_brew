@@ -309,7 +309,9 @@ void main() {
         home: Scaffold(body: CashierDashboard(controller: controller)),
       ),
     );
-    await tester.tap(find.text('Charge'));
+    await tester.tap(find.text('Proceed to Checkout'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Charge '));
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
     expect(repository.creations, 1);

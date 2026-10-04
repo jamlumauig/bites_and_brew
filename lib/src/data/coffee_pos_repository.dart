@@ -75,12 +75,15 @@ class InMemoryCoffeePosRepository implements CoffeePosRepository {
         '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
     final effectiveId = orderId ??
         'ORD-$dateStr-$timeStr-${_globalCounter.toString().padLeft(3, '0')}';
+    final effectiveOrderNumber =
+        '$dateStr-${effectiveSequence.toString().padLeft(3, '0')}';
 
     final order = OrderRecord.fromCalculatedTotals(
       draft: draft,
       totals: totals,
       sequence: effectiveSequence,
       id: effectiveId,
+      orderNumber: effectiveOrderNumber,
     );
     _orders.add(order);
     return order;

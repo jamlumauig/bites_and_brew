@@ -66,9 +66,7 @@ class ReceiptLayout {
     }
     if (validOptional(footer)) row(footer, center: true);
     lines.add(const ReceiptLine.separator());
-    final number = receipt.sequence > 0
-        ? '${receipt.sequence}'
-        : receipt.orderId;
+    final number = receipt.displayOrderNumber;
     row('Order #$number • ${receipt.orderType}');
     row(
       '${date(receipt.createdAt)}${receipt.cashierName.trim().isEmpty ? '' : ' • ${receipt.cashierName.trim()}'}',
@@ -163,14 +161,23 @@ class ReceiptLayout {
 
   List<ReceiptLine> kitchen(PreparationTicketData ticket) {
     final lines = <ReceiptLine>[];
-    final number = ticket.sequence > 0 ? '${ticket.sequence}' : ticket.orderId;
-    var header =
+    final number = ticket.displayOrderNumber;
+    final fullHeader =
         'ORDER #$number • ${ticket.orderType.toUpperCase()} • ${time(ticket.createdAt)}';
-    if (header.length > columns) {
-      header =
+    if (fullHeader.length <= columns) {
+      lines.addAll(_row(fullHeader, bold: true));
+    } else {
+      final shortHeader =
           '#$number • ${ticket.orderType.toUpperCase()} • ${time(ticket.createdAt)}';
+      if (shortHeader.length <= columns) {
+        lines.addAll(_row(shortHeader, bold: true));
+      } else {
+        lines.addAll(
+          _row('#$number • ${ticket.orderType.toUpperCase()}', bold: true),
+        );
+        lines.addAll(_row(time(ticket.createdAt), bold: true));
+      }
     }
-    lines.addAll(_row(header, bold: true));
     if (validOptional(ticket.customerName)) {
       lines.addAll(_row('Customer: ${ticket.customerName.trim()}'));
     }

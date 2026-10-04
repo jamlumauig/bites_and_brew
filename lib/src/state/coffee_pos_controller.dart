@@ -26,6 +26,33 @@ class CoffeePosController extends ChangeNotifier {
   bool _isLoading = true;
   Role _role = Role.cashier;
   int _selectedCategoryIndex = 0;
+  int _newOrderRevision = 0;
+  // Device-local browsing state: account/cart synchronization must not reset it.
+  double productsScrollOffset = 0;
+  double categoriesScrollOffset = 0;
+  String productsSearchQuery = '';
+  int get newOrderRevision => _newOrderRevision;
+  void _resetProductsForNextOrder() {
+    _selectedCategoryIndex = 0;
+    _activeProductId = null;
+    productsScrollOffset = 0;
+    categoriesScrollOffset = 0;
+    productsSearchQuery = '';
+    _selectedCustomerId = null;
+    _newOrderRevision++;
+  }
+
+  void _restoreSelectedCategory(String? id) {
+    final categories = cashierCategories;
+    final index = categories.indexWhere((category) => category.id == id);
+    _selectedCategoryIndex = index >= 0
+        ? index
+        : _selectedCategoryIndex.clamp(
+            0,
+            categories.isEmpty ? 0 : categories.length - 1,
+          );
+  }
+
   String? _activeProductId;
   final List<CartItem> _cart = <CartItem>[];
   StoreBootstrap? _bootstrap;
@@ -39,6 +66,9 @@ class CoffeePosController extends ChangeNotifier {
   List<ShiftSummary> _activeShifts = <ShiftSummary>[];
   double _todaySales = 0;
   double _discountAmount = 0;
+  bool _discountsEnabled = false;
+  List<DiscountOption> _discountOptions = List.of(DiscountOption.defaults);
+  String? _selectedDiscountId;
   bool _vatEnabled = true;
   double _taxRate = 0.12;
   double _serviceChargeRate = 0.0;
@@ -110,6 +140,34 @@ class CoffeePosController extends ChangeNotifier {
   List<CartItem> get cart => List.unmodifiable(_cart);
   StoreBootstrap? get bootstrap => _bootstrap;
   double get discountAmount => _discountAmount;
+  bool get discountsEnabled => _discountsEnabled;
+  List<DiscountOption> get discountOptions =>
+      List.unmodifiable(_discountOptions);
+  List<DiscountOption> get availableDiscounts => _discountsEnabled
+      ? _discountOptions.where((option) => option.enabled).toList()
+      : const [];
+  String? get selectedDiscountId =>
+      availableDiscounts.any((option) => option.id == _selectedDiscountId)
+      ? _selectedDiscountId
+      : null;
+  DiscountApplication get discountApplication {
+    for (final option in availableDiscounts) {
+      if (option.id == _selectedDiscountId) {
+        return DiscountApplication(
+          type: option.type,
+          label: option.name,
+          percentage: option.type == DiscountType.percentage
+              ? option.value / 100
+              : 0,
+          fixedAmount: option.type == DiscountType.fixedAmount
+              ? option.value
+              : 0,
+        );
+      }
+    }
+    return const DiscountApplication.none();
+  }
+
   bool get vatEnabled => _vatEnabled;
   double get taxRate => _taxRate;
   double get serviceChargeRate => _serviceChargeRate;
@@ -154,6 +212,12 @@ class CoffeePosController extends ChangeNotifier {
   String get shiftId => _shiftId;
 
   List<Category> get categories => List.unmodifiable(_categories);
+  Category? categoryById(String id) {
+    for (final category in _categories) {
+      if (category.id == id) return category;
+    }
+    return null;
+  }
   List<Category> get cashierCategories => List.unmodifiable(
     _categories
         .where(
@@ -164,17 +228,12 @@ class CoffeePosController extends ChangeNotifier {
   );
   List<Product> get products => List.unmodifiable(_products);
 
-  /// Keeps current menus compatible with catalogs that used the former
-  /// three-option `size` group.
+  /// Returns the configured modifier groups.
   List<ModifierGroup> get modifierGroups {
-    final groupsById = <String, ModifierGroup>{
-      for (final group in _modifierGroups)
-        if (group.id != 'size') group.id: group,
-    };
-    for (final group in StoreBootstrap.sample().modifierGroups) {
-      groupsById.putIfAbsent(group.id, () => group);
+    if (_modifierGroups.isEmpty) {
+      _modifierGroups = List<ModifierGroup>.from(StoreBootstrap.sample().modifierGroups);
     }
-    return List.unmodifiable(groupsById.values);
+    return List.unmodifiable(_modifierGroups);
   }
 
   List<InventoryHealth> get inventoryHealth =>
@@ -206,6 +265,7 @@ class CoffeePosController extends ChangeNotifier {
   CheckoutSummary get checkoutSummary => _calculator.summarize(
     cartItems: _cart,
     discountAmount: _discountAmount,
+    discountApplication: discountApplication,
     taxRate: _taxRate,
     serviceChargeRate: _serviceChargeRate,
     cashReceived: _cashReceived,
@@ -329,6 +389,7 @@ class CoffeePosController extends ChangeNotifier {
   };
 
   void _applySharedCatalog(Map<String, dynamic> json) {
+    final categoryId = selectedCategory?.id;
     _categories = _readRealtimeModels(json['categories'], Category.fromJson);
     _products = _readRealtimeModels(json['products'], Product.fromJson);
     _modifierGroups = _readRealtimeModels(
@@ -336,6 +397,7 @@ class CoffeePosController extends ChangeNotifier {
       ModifierGroup.fromJson,
     );
     _ensureDefaultCategories();
+    _restoreSelectedCategory(categoryId);
   }
 
   void _applySharedOrders(Map<String, dynamic> json) {
@@ -389,6 +451,10 @@ class CoffeePosController extends ChangeNotifier {
 
   Map<String, dynamic> _settingsSnapshot() {
     return <String, dynamic>{
+      'discountsEnabled': _discountsEnabled,
+      'discountOptions': _discountOptions
+          .map((option) => option.toJson())
+          .toList(),
       'storeName': _storeName,
       'storeAddress': _storeAddress,
       'storeContact': _storeContact,
@@ -419,6 +485,16 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   void _applySettingsSnapshot(Map<String, dynamic> json) {
+    _discountsEnabled = json['discountsEnabled'] as bool? ?? false;
+    _discountOptions = json['discountOptions'] is List
+        ? (json['discountOptions'] as List)
+              .map(
+                (item) => DiscountOption.fromJson(
+                  Map<String, dynamic>.from(item as Map),
+                ),
+              )
+              .toList()
+        : List.of(DiscountOption.defaults);
     _storeName = json['storeName'] as String? ?? _storeName;
     _storeAddress = json['storeAddress'] as String? ?? _storeAddress;
     _storeContact = json['storeContact'] as String? ?? _storeContact;
@@ -473,6 +549,7 @@ class CoffeePosController extends ChangeNotifier {
       'session': <String, dynamic>{
         'cart': _cart.map((item) => item.toJson()).toList(growable: false),
         'discountAmount': _discountAmount,
+        'selectedDiscountId': selectedDiscountId,
         'vatEnabled': _vatEnabled,
         'taxRate': _taxRate,
         'serviceChargeRate': _serviceChargeRate,
@@ -497,6 +574,7 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   void _applyStateJson(String jsonText) {
+    final categoryId = selectedCategory?.id;
     final decoded = jsonDecode(jsonText);
     if (decoded is! Map) {
       throw const FormatException('Expected a JSON object.');
@@ -522,10 +600,11 @@ class CoffeePosController extends ChangeNotifier {
     _recentOrders = List<OrderRecord>.from(bootstrap.recentOrders);
     _activeShifts = List<ShiftSummary>.from(bootstrap.activeShifts);
     _todaySales = bootstrap.todaySales;
-    _selectedCategoryIndex = 0;
+    _restoreSelectedCategory(categoryId);
     _activeProductId = null;
     _cart.clear();
     _discountAmount = 0;
+    _selectedDiscountId = null;
     _taxRate = 0.12;
     _serviceChargeRate = 0.0;
     _cashReceived = 0;
@@ -544,6 +623,7 @@ class CoffeePosController extends ChangeNotifier {
         ..clear()
         ..addAll(_readCartItems(sessionJson['cart']));
       _discountAmount = _numberFromJson(sessionJson['discountAmount']);
+      _selectedDiscountId = sessionJson['selectedDiscountId'] as String?;
       _taxRate = _numberFromJson(sessionJson['taxRate'], 0.12);
       _serviceChargeRate = _numberFromJson(sessionJson['serviceChargeRate']);
       _cashReceived = _numberFromJson(sessionJson['cashReceived']);
@@ -616,30 +696,44 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   List<ModifierGroup> modifierGroupsForProduct(Product product) {
-    final groupIds = _modifierGroupIdsForProduct(product);
-    return groupIds
-        .map(modifierGroupById)
-        .whereType<ModifierGroup>()
-        .toList(growable: false);
+    final activeGroups = modifierGroups.where((group) => group.enabled).toList();
+    final result = <ModifierGroup>[];
+    final categoryDefaultIds = defaultModifierGroupIdsForCategory(product.categoryId);
+
+    for (final group in activeGroups) {
+      final directlyAssigned = product.modifierGroupIds.contains(group.id) ||
+          group.targetProductIds.contains(product.id);
+      final categoryAssigned = (product.useCategoryDefaults && categoryDefaultIds.contains(group.id)) ||
+          group.targetCategoryIds.contains(product.categoryId);
+
+      if (directlyAssigned || categoryAssigned) {
+        result.add(group);
+      }
+    }
+    return result;
   }
 
-  List<String> _modifierGroupIdsForProduct(Product product) {
-    final groupIds = product.modifierGroupIds.isEmpty
-        ? defaultModifierGroupIdsForCategory(product.categoryId)
-        : product.modifierGroupIds;
-    if (_isDrinkCategory(product.categoryId)) {
-      return <String>[
-        'drink-size',
-        ...groupIds.where((id) => id != 'size' && id != 'drink-size'),
-      ];
+  List<String> defaultModifierGroupIdsForCategory(String categoryId) {
+    final explicitFromCategory = categoryById(categoryId)?.modifierGroupIds ?? const <String>[];
+    final fromGroups = _modifierGroups
+        .where((g) => g.enabled && g.targetCategoryIds.contains(categoryId))
+        .map((g) => g.id);
+    final combined = <String>{...explicitFromCategory, ...fromGroups};
+    if (combined.isNotEmpty) {
+      return combined.toList();
     }
-    if (_isSnackCategory(product.categoryId)) {
-      return <String>[
-        'snack-size',
-        ...groupIds.where((id) => id != 'size' && id != 'snack-size'),
-      ];
+    // Backward compatibility with sample catalog if no category assignments are configured
+    if (_isDrinkCategory(categoryId)) {
+      return const <String>['drink-size', 'milk', 'extras']
+          .where((id) => modifierGroupById(id) != null && (modifierGroupById(id)?.enabled ?? false))
+          .toList();
     }
-    return groupIds;
+    if (_isSnackCategory(categoryId)) {
+      return const <String>['snack-size']
+          .where((id) => modifierGroupById(id) != null && (modifierGroupById(id)?.enabled ?? false))
+          .toList();
+    }
+    return const <String>[];
   }
 
   bool _isDrinkCategory(String categoryId) {
@@ -690,14 +784,114 @@ class CoffeePosController extends ChangeNotifier {
     return result;
   }
 
-  List<String> defaultModifierGroupIdsForCategory(String categoryId) {
-    if (_isDrinkCategory(categoryId)) {
-      return const <String>['drink-size', 'milk', 'extras'];
+  void addModifierGroup(ModifierGroup group) {
+    _modifierGroups = [..._modifierGroups, group];
+    unawaited(_saveCurrentStateSnapshot());
+    unawaited(_saveSharedCatalog());
+    notifyListeners();
+  }
+
+  void updateModifierGroup(ModifierGroup group) {
+    final index = _modifierGroups.indexWhere((g) => g.id == group.id);
+    if (index == -1) {
+      addModifierGroup(group);
+      return;
     }
-    if (_isSnackCategory(categoryId)) {
-      return const <String>['snack-size'];
+    _modifierGroups = [
+      ..._modifierGroups.sublist(0, index),
+      group,
+      ..._modifierGroups.sublist(index + 1),
+    ];
+    unawaited(_saveCurrentStateSnapshot());
+    unawaited(_saveSharedCatalog());
+    notifyListeners();
+  }
+
+  void deleteModifierGroup(String groupId) {
+    _modifierGroups = _modifierGroups.where((g) => g.id != groupId).toList();
+    _products = _products.map((p) {
+      if (p.modifierGroupIds.contains(groupId)) {
+        return Product(
+          id: p.id,
+          name: p.name,
+          categoryId: p.categoryId,
+          price: p.price,
+          description: p.description,
+          badge: p.badge,
+          modifierGroupIds:
+              p.modifierGroupIds.where((id) => id != groupId).toList(),
+          imageUrl: p.imageUrl,
+          isAvailable: p.isAvailable,
+          useCategoryDefaults: p.useCategoryDefaults,
+        );
+      }
+      return p;
+    }).toList();
+    _categories = _categories.map((c) {
+      if (c.modifierGroupIds.contains(groupId)) {
+        return c.copyWith(
+          modifierGroupIds:
+              c.modifierGroupIds.where((id) => id != groupId).toList(),
+        );
+      }
+      return c;
+    }).toList();
+    unawaited(_saveCurrentStateSnapshot());
+    unawaited(_saveSharedCatalog());
+    notifyListeners();
+  }
+
+  void toggleModifierGroupEnabled(String groupId, bool enabled) {
+    final index = _modifierGroups.indexWhere((g) => g.id == groupId);
+    if (index != -1) {
+      final existing = _modifierGroups[index];
+      _modifierGroups = [
+        ..._modifierGroups.sublist(0, index),
+        existing.copyWith(enabled: enabled),
+        ..._modifierGroups.sublist(index + 1),
+      ];
+      unawaited(_saveCurrentStateSnapshot());
+      unawaited(_saveSharedCatalog());
+      notifyListeners();
     }
-    return const <String>[];
+  }
+
+  void reorderModifierGroups(int oldIndex, int newIndex) {
+    if (oldIndex < 0 ||
+        oldIndex >= _modifierGroups.length ||
+        newIndex < 0 ||
+        newIndex >= _modifierGroups.length ||
+        oldIndex == newIndex) {
+      return;
+    }
+    final list = List<ModifierGroup>.from(_modifierGroups);
+    final item = list.removeAt(oldIndex);
+    list.insert(newIndex, item);
+    _modifierGroups = list;
+    unawaited(_saveCurrentStateSnapshot());
+    unawaited(_saveSharedCatalog());
+    notifyListeners();
+  }
+
+  void assignModifierGroup(
+    String groupId, {
+    List<String>? categoryIds,
+    List<String>? productIds,
+  }) {
+    final index = _modifierGroups.indexWhere((g) => g.id == groupId);
+    if (index == -1) return;
+    final existing = _modifierGroups[index];
+    _modifierGroups = [
+      ..._modifierGroups.sublist(0, index),
+      existing.copyWith(
+        targetCategoryIds: categoryIds ?? existing.targetCategoryIds,
+        targetProductIds: productIds ?? existing.targetProductIds,
+      ),
+      ..._modifierGroups.sublist(index + 1),
+    ];
+    unawaited(_saveCurrentStateSnapshot());
+    unawaited(_saveSharedCatalog());
+    notifyListeners();
   }
 
   void addCategory({required String name, required String icon}) {
@@ -795,7 +989,11 @@ class CoffeePosController extends ChangeNotifier {
     if (index == -1) {
       return;
     }
+    final existing = _products[index];
     _products[index] = Product(
+      imageUrl: existing.imageUrl,
+      isAvailable: existing.isAvailable,
+      useCategoryDefaults: existing.useCategoryDefaults,
       id: productId,
       name: name,
       categoryId: categoryId,
@@ -818,7 +1016,14 @@ class CoffeePosController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void replaceProducts(List<Product> products) {
+  void replaceProducts(
+    List<Product> products, {
+    List<Category>? categories,
+    List<ModifierGroup>? modifierGroups,
+  }) {
+    final selectedId = selectedCategory?.id;
+    if (categories != null) _categories = List.of(categories);
+    if (modifierGroups != null) _modifierGroups = List.of(modifierGroups);
     final productById = <String, Product>{
       for (final product in products) product.id: product,
     };
@@ -826,10 +1031,45 @@ class CoffeePosController extends ChangeNotifier {
     final updatedCart = <CartItem>[];
     for (final item in _cart) {
       final product = productById[item.product.id];
-      if (product == null) {
+      if (product == null || !product.isAvailable) {
         continue;
       }
-      updatedCart.add(item.copyWith(product: product));
+      final groups = modifierGroupsForProduct(product);
+      final refreshedModifiers = <SelectedModifier>[];
+      for (final modifier in item.selectedModifiers) {
+        for (final group in groups.where(
+          (group) => group.id == modifier.groupId,
+        )) {
+          for (final option in group.options.where(
+            (option) => option.id == modifier.optionId,
+          )) {
+            refreshedModifiers.add(
+              SelectedModifier(
+                groupId: group.id,
+                optionId: option.id,
+                label: option.name,
+                priceDelta: option.priceDelta,
+                isDefault: option.isDefault,
+              ),
+            );
+          }
+        }
+      }
+      final valid = groups.every((group) {
+        final count = refreshedModifiers
+            .where((modifier) => modifier.groupId == group.id)
+            .length;
+        return count >= group.minSelected &&
+            (group.maxSelected == 0 || count <= group.maxSelected);
+      });
+      if (valid) {
+        updatedCart.add(
+          item.copyWith(
+            product: product,
+            selectedModifiers: refreshedModifiers,
+          ),
+        );
+      }
     }
     _cart
       ..clear()
@@ -838,10 +1078,16 @@ class CoffeePosController extends ChangeNotifier {
         !productById.containsKey(_activeProductId)) {
       _activeProductId = null;
     }
-    final categories = cashierCategories;
-    if (_selectedCategoryIndex >= categories.length) {
-      _selectedCategoryIndex = categories.isEmpty ? 0 : categories.length - 1;
-    }
+    final visibleCategories = cashierCategories;
+    final matchingIndex = visibleCategories.indexWhere(
+      (category) => category.id == selectedId,
+    );
+    _selectedCategoryIndex = matchingIndex < 0
+        ? _selectedCategoryIndex.clamp(
+            0,
+            visibleCategories.isEmpty ? 0 : visibleCategories.length - 1,
+          )
+        : matchingIndex;
     unawaited(_saveCurrentStateSnapshot());
     unawaited(_saveSharedCatalog());
     notifyListeners();
@@ -910,7 +1156,7 @@ class CoffeePosController extends ChangeNotifier {
     List<SelectedModifier>? selectedModifiers,
     int quantity = 1,
   }) {
-    if (quantity <= 0) {
+    if (quantity <= 0 || !product.isAvailable || _isCheckingOut) {
       return;
     }
     final modifiers = selectedModifiers ?? resolveDefaultModifiers(product);
@@ -993,6 +1239,7 @@ class CoffeePosController extends ChangeNotifier {
   void clearCart({bool persist = true}) {
     _cart.clear();
     _discountAmount = 0;
+    _selectedDiscountId = null;
     _cashReceived = 0;
     _paymentType = PaymentType.card;
     _orderType = 'Dine-in';
@@ -1025,6 +1272,7 @@ class CoffeePosController extends ChangeNotifier {
       );
     }
     _discountAmount = 0;
+    _selectedDiscountId = null;
     _cashReceived = 0;
     _paymentType = PaymentType.card;
     _orderType = order.orderType.isEmpty ? 'Dine-in' : order.orderType;
@@ -1123,7 +1371,48 @@ class CoffeePosController extends ChangeNotifier {
     }
   }
 
+  void updateDiscountSettings({
+    required bool enabled,
+    required List<DiscountOption> options,
+  }) {
+    final ids = <String>{};
+    final names = <String>{};
+    for (final option in options) {
+      if (option.id.isEmpty ||
+          !ids.add(option.id) ||
+          option.name.trim().isEmpty ||
+          !names.add(option.name.trim().toLowerCase()) ||
+          option.type == DiscountType.none ||
+          !option.value.isFinite ||
+          option.value < 0 ||
+          (option.type == DiscountType.percentage && option.value > 100) ||
+          (!option.isStatutory && option.enabled && option.value == 0)) {
+        throw ArgumentError(
+          'Use unique discount names and valid positive amounts (percentages up to 100).',
+        );
+      }
+    }
+    _discountsEnabled = enabled;
+    _discountOptions = List.of(options);
+    _selectedDiscountId = selectedDiscountId;
+    if (!enabled) _discountAmount = 0;
+    unawaited(_saveCurrentStateSnapshot());
+    notifyListeners();
+  }
+
+  void selectDiscount(String? id) {
+    if (_isCheckingOut) return;
+    if (id != null && !availableDiscounts.any((option) => option.id == id)) {
+      return;
+    }
+    _selectedDiscountId = id;
+    _discountAmount = 0;
+    unawaited(_saveCurrentStateSnapshot());
+    notifyListeners();
+  }
+
   void updateDiscount(double value) {
+    _selectedDiscountId = null;
     _discountAmount = value.clamp(0, double.infinity);
     unawaited(_saveCurrentStateSnapshot());
     notifyListeners();
@@ -1323,6 +1612,7 @@ class CoffeePosController extends ChangeNotifier {
     _activeProductId = null;
     _cart.clear();
     _discountAmount = 0;
+    _selectedDiscountId = null;
     _taxRate = 0.12;
     _serviceChargeRate = 0.0;
     _cashReceived = 0;
@@ -1375,6 +1665,7 @@ class CoffeePosController extends ChangeNotifier {
     _activeProductId = null;
     _cart.clear();
     _discountAmount = 0;
+    _selectedDiscountId = null;
     _taxRate = 0.12;
     _serviceChargeRate = 0.0;
     _cashReceived = 0;
@@ -1408,6 +1699,7 @@ class CoffeePosController extends ChangeNotifier {
     _activeProductId = null;
     _cart.clear();
     _discountAmount = 0;
+    _selectedDiscountId = null;
     _taxRate = 0.12;
     _serviceChargeRate = 0.0;
     _cashReceived = 0;
@@ -1760,13 +2052,22 @@ class CoffeePosController extends ChangeNotifier {
         .join('|');
   }
 
-  int _computeNextSequence() {
+  int _computeNextSequence({DateTime? forDate}) {
+    final now = forDate ?? DateTime.now();
     var maxSeq = 0;
     for (final o in _recentOrders) {
-      if (o.sequence > maxSeq) maxSeq = o.sequence;
+      if (o.createdAt.year == now.year &&
+          o.createdAt.month == now.month &&
+          o.createdAt.day == now.day) {
+        if (o.sequence > maxSeq) maxSeq = o.sequence;
+      }
     }
     for (final q in _activeOrders) {
-      if (q.sequence > maxSeq) maxSeq = q.sequence;
+      if (q.createdAt.year == now.year &&
+          q.createdAt.month == now.month &&
+          q.createdAt.day == now.day) {
+        if (q.sequence > maxSeq) maxSeq = q.sequence;
+      }
     }
     return maxSeq + 1;
   }
@@ -1785,27 +2086,33 @@ class CoffeePosController extends ChangeNotifier {
         orderType: _orderType,
         paymentType: _paymentType,
         discountAmount: _discountAmount,
+        discountApplication: discountApplication,
         taxRate: _taxRate,
         serviceChargeRate: _serviceChargeRate,
         cashReceived: _cashReceived,
         vatEnabled: _vatEnabled,
         lines: _cart
             .map(
-              (item) => CartLineInput(
-                lineId: item.lineId ?? item.product.id,
-                productId: item.product.id,
-                quantity: item.quantity,
-                modifierIds: item.selectedModifiers
-                    .map((modifier) => modifier.optionId)
-                    .toList(growable: false),
-                productName: item.product.name,
-                unitPrice: item.singleItemPrice,
-                modifierLabels: item.selectedModifiers
-                    .map((modifier) => modifier.label)
-                    .toList(growable: false),
-                lineTotal: item.lineTotal,
-                selectedModifiers: item.selectedModifiers,
-              ),
+              (item) {
+                final category = categoryById(item.product.categoryId);
+                return CartLineInput(
+                  lineId: item.lineId ?? item.product.id,
+                  productId: item.product.id,
+                  quantity: item.quantity,
+                  modifierIds: item.selectedModifiers
+                      .map((modifier) => modifier.optionId)
+                      .toList(growable: false),
+                  productName: item.product.name,
+                  categoryId: item.product.categoryId,
+                  categoryName: category?.name,
+                  unitPrice: item.singleItemPrice,
+                  modifierLabels: item.selectedModifiers
+                      .map((modifier) => modifier.label)
+                      .toList(growable: false),
+                  lineTotal: item.lineTotal,
+                  selectedModifiers: item.selectedModifiers,
+                );
+              },
             )
             .toList(growable: false),
         note: 'Prototype checkout',
@@ -1818,6 +2125,7 @@ class CoffeePosController extends ChangeNotifier {
         OrderQueueRecord(
           id: 'Q-${order.id}',
           sequence: order.sequence,
+          orderNumber: order.orderNumber,
           status: OrderQueueStatus.preparing,
           customerName: selectedCustomer?.name ?? 'Walk-in',
           orderType: _orderType,
@@ -1827,6 +2135,7 @@ class CoffeePosController extends ChangeNotifier {
         ..._activeOrders,
       ];
       _todaySales += order.total;
+      _resetProductsForNextOrder();
       clearCart(persist: false);
       await _saveCurrentStateSnapshot();
       await _saveSharedOrders();

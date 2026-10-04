@@ -12,7 +12,7 @@ class WebReceiptHtmlBuilder {
   }) => _document(
     ReceiptLayout(config).combined(receipt),
     config,
-    'Receipt - ${receipt.orderId}',
+    'Receipt - #${receipt.displayOrderNumber}',
   );
 
   static String buildPreparationTicketHtml(
@@ -21,7 +21,7 @@ class WebReceiptHtmlBuilder {
   }) => _document(
     ReceiptLayout(config).kitchen(ticket),
     config,
-    'Prep Ticket - #${ticket.sequence}',
+    'Prep Ticket - #${ticket.displayOrderNumber}',
   );
 
   static String _document(

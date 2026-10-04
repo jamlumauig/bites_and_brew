@@ -71,6 +71,7 @@ class ReceiptData {
   const ReceiptData({
     required this.orderId,
     required this.sequence,
+    this.orderNumber,
     required this.orderType,
     required this.paymentType,
     required this.cashierName,
@@ -104,6 +105,7 @@ class ReceiptData {
 
   final String orderId;
   final int sequence;
+  final String? orderNumber;
   final String orderType;
   final String paymentType;
   final String cashierName;
@@ -130,6 +132,13 @@ class ReceiptData {
   final String printerName;
   final bool vatEnabled;
 
+  String get displayOrderNumber {
+    if (orderNumber != null && orderNumber!.isNotEmpty) {
+      return orderNumber!;
+    }
+    return sequence > 0 ? '$sequence' : orderId;
+  }
+
   factory ReceiptData.fromOrderRecord({
     required OrderRecord order,
     required String storeName,
@@ -146,6 +155,7 @@ class ReceiptData {
           : null,
       orderId: order.id,
       sequence: order.sequence,
+      orderNumber: order.orderNumber,
       orderType: order.orderType,
       paymentType: order.paymentType.name.toUpperCase(),
       cashierName: order.cashierName,

@@ -36,6 +36,7 @@ class PreparationTicketData {
   const PreparationTicketData({
     required this.orderId,
     required this.sequence,
+    this.orderNumber,
     required this.orderType,
     required this.createdAt,
     required this.items,
@@ -46,12 +47,20 @@ class PreparationTicketData {
 
   final String orderId;
   final int sequence;
+  final String? orderNumber;
   final String orderType;
   final DateTime createdAt;
   final List<PreparationTicketItem> items;
   final String customerName;
   final String note;
   final String printerName;
+
+  String get displayOrderNumber {
+    if (orderNumber != null && orderNumber!.isNotEmpty) {
+      return orderNumber!;
+    }
+    return sequence > 0 ? '$sequence' : orderId;
+  }
 
   factory PreparationTicketData.fromOrderRecord(
     OrderRecord order, {
@@ -61,6 +70,7 @@ class PreparationTicketData {
     return PreparationTicketData(
       orderId: order.id,
       sequence: order.sequence,
+      orderNumber: order.orderNumber,
       orderType: order.orderType,
       createdAt: order.createdAt,
       items: order.items
@@ -80,6 +90,7 @@ class PreparationTicketData {
     return PreparationTicketData(
       orderId: queue.id,
       sequence: queue.sequence,
+      orderNumber: queue.displayOrderNumber,
       orderType: queue.orderType,
       createdAt: queue.createdAt,
       items: queue.items

@@ -252,16 +252,37 @@ class StoreBootstrap {
 }
 
 class Category {
-  const Category({required this.id, required this.name, required this.icon});
+  const Category({
+    required this.id,
+    required this.name,
+    required this.icon,
+    this.modifierGroupIds = const <String>[],
+  });
 
   final String id;
   final String name;
   final String icon;
+  final List<String> modifierGroupIds;
+
+  Category copyWith({
+    String? id,
+    String? name,
+    String? icon,
+    List<String>? modifierGroupIds,
+  }) {
+    return Category(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      icon: icon ?? this.icon,
+      modifierGroupIds: modifierGroupIds ?? this.modifierGroupIds,
+    );
+  }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
     'name': name,
     'icon': icon,
+    'modifierGroupIds': modifierGroupIds,
   };
 
   factory Category.fromJson(Map<String, dynamic> json) {
@@ -269,6 +290,7 @@ class Category {
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
       icon: json['icon'] as String? ?? '',
+      modifierGroupIds: _readStringList(json['modifierGroupIds']),
     );
   }
 }
@@ -282,6 +304,9 @@ class Product {
     required this.description,
     required this.badge,
     required this.modifierGroupIds,
+    this.imageUrl,
+    this.isAvailable = true,
+    this.useCategoryDefaults = true,
   });
 
   final String id;
@@ -291,6 +316,9 @@ class Product {
   final String description;
   final String badge;
   final List<String> modifierGroupIds;
+  final String? imageUrl;
+  final bool isAvailable;
+  final bool useCategoryDefaults;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
@@ -300,6 +328,9 @@ class Product {
     'description': description,
     'badge': badge,
     'modifierGroupIds': modifierGroupIds,
+    'imageUrl': imageUrl,
+    'isAvailable': isAvailable,
+    'useCategoryDefaults': useCategoryDefaults,
   };
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -311,6 +342,9 @@ class Product {
       description: json['description'] as String? ?? '',
       badge: json['badge'] as String? ?? '',
       modifierGroupIds: _readStringList(json['modifierGroupIds']),
+      imageUrl: json['imageUrl'] as String?,
+      isAvailable: json['isAvailable'] as bool? ?? true,
+      useCategoryDefaults: json['useCategoryDefaults'] as bool? ?? true,
     );
   }
 }
@@ -322,6 +356,9 @@ class ModifierGroup {
     required this.options,
     required this.minSelected,
     required this.maxSelected,
+    this.enabled = true,
+    this.targetCategoryIds = const <String>[],
+    this.targetProductIds = const <String>[],
   });
 
   final String id;
@@ -329,6 +366,53 @@ class ModifierGroup {
   final List<ModifierOption> options;
   final int minSelected;
   final int maxSelected;
+  final bool enabled;
+  final List<String> targetCategoryIds;
+  final List<String> targetProductIds;
+
+  bool get isSingleSelect => maxSelected == 1;
+  bool get isRequired => minSelected > 0;
+
+  String get selectionRuleLabel {
+    if (isSingleSelect) {
+      return isRequired ? 'Single-select (Required)' : 'Single-select (Optional)';
+    } else {
+      if (isRequired) {
+        if (minSelected == maxSelected && maxSelected > 0) {
+          return 'Multi-select (Required $minSelected)';
+        }
+        return maxSelected > 0
+            ? 'Multi-select (Required $minSelected–$maxSelected)'
+            : 'Multi-select (Required at least $minSelected)';
+      } else {
+        return maxSelected > 0
+            ? 'Multi-select (Optional up to $maxSelected)'
+            : 'Multi-select (Optional)';
+      }
+    }
+  }
+
+  ModifierGroup copyWith({
+    String? id,
+    String? name,
+    List<ModifierOption>? options,
+    int? minSelected,
+    int? maxSelected,
+    bool? enabled,
+    List<String>? targetCategoryIds,
+    List<String>? targetProductIds,
+  }) {
+    return ModifierGroup(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      options: options ?? this.options,
+      minSelected: minSelected ?? this.minSelected,
+      maxSelected: maxSelected ?? this.maxSelected,
+      enabled: enabled ?? this.enabled,
+      targetCategoryIds: targetCategoryIds ?? this.targetCategoryIds,
+      targetProductIds: targetProductIds ?? this.targetProductIds,
+    );
+  }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
@@ -336,6 +420,9 @@ class ModifierGroup {
     'options': options.map((item) => item.toJson()).toList(growable: false),
     'minSelected': minSelected,
     'maxSelected': maxSelected,
+    'enabled': enabled,
+    'targetCategoryIds': targetCategoryIds,
+    'targetProductIds': targetProductIds,
   };
 
   factory ModifierGroup.fromJson(Map<String, dynamic> json) {
@@ -345,6 +432,9 @@ class ModifierGroup {
       options: _readList(json['options'], ModifierOption.fromJson),
       minSelected: _intValue(json['minSelected']),
       maxSelected: _intValue(json['maxSelected']),
+      enabled: json['enabled'] as bool? ?? true,
+      targetCategoryIds: _readStringList(json['targetCategoryIds']),
+      targetProductIds: _readStringList(json['targetProductIds']),
     );
   }
 }
@@ -361,6 +451,20 @@ class ModifierOption {
   final String name;
   final double priceDelta;
   final bool isDefault;
+
+  ModifierOption copyWith({
+    String? id,
+    String? name,
+    double? priceDelta,
+    bool? isDefault,
+  }) {
+    return ModifierOption(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      priceDelta: priceDelta ?? this.priceDelta,
+      isDefault: isDefault ?? this.isDefault,
+    );
+  }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
@@ -415,9 +519,78 @@ class SelectedModifier {
   }
 }
 
+class DiscountOption {
+  const DiscountOption({
+    required this.id,
+    required this.name,
+    required this.type,
+    this.value = 0,
+    this.enabled = true,
+  });
+
+  final String id;
+  final String name;
+  final DiscountType type;
+  final double value;
+  final bool enabled;
+
+  bool get isStatutory =>
+      type == DiscountType.seniorCitizen || type == DiscountType.pwd;
+
+  static const defaults = <DiscountOption>[
+    DiscountOption(
+      id: 'senior',
+      name: 'Senior Citizen',
+      type: DiscountType.seniorCitizen,
+      value: 20,
+    ),
+    DiscountOption(id: 'pwd', name: 'PWD', type: DiscountType.pwd, value: 20),
+    DiscountOption(
+      id: 'employee',
+      name: 'Employee',
+      type: DiscountType.percentage,
+      enabled: false,
+    ),
+  ];
+
+  DiscountOption copyWith({
+    String? name,
+    DiscountType? type,
+    double? value,
+    bool? enabled,
+  }) => DiscountOption(
+    id: id,
+    name: name ?? this.name,
+    type: type ?? this.type,
+    value: value ?? this.value,
+    enabled: enabled ?? this.enabled,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'type': type.name,
+    'value': value,
+    'enabled': enabled,
+  };
+
+  factory DiscountOption.fromJson(Map<String, dynamic> json) => DiscountOption(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    type: _enumFromName(
+      DiscountType.values,
+      json['type'] as String?,
+      DiscountType.percentage,
+    ),
+    value: _numValue(json['value']),
+    enabled: json['enabled'] as bool? ?? true,
+  );
+}
+
 class DiscountApplication {
   const DiscountApplication({
     required this.type,
+    this.label,
     this.percentage = 0,
     this.fixedAmount = 0,
     this.holderName,
@@ -428,6 +601,7 @@ class DiscountApplication {
 
   const DiscountApplication.none()
     : type = DiscountType.none,
+      label = null,
       percentage = 0,
       fixedAmount = 0,
       holderName = null,
@@ -436,6 +610,7 @@ class DiscountApplication {
       eligibleLineIds = const <String>[];
 
   final DiscountType type;
+  final String? label;
   final double percentage;
   final double fixedAmount;
   final String? holderName;
@@ -451,6 +626,7 @@ class DiscountApplication {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'type': type.name,
+    'label': label,
     'percentage': percentage,
     'fixedAmount': fixedAmount,
     'holderName': holderName,
@@ -461,6 +637,7 @@ class DiscountApplication {
 
   factory DiscountApplication.fromJson(Map<String, dynamic> json) {
     return DiscountApplication(
+      label: json['label'] as String?,
       type: _enumFromName(
         DiscountType.values,
         json['type'] as String?,
@@ -547,6 +724,8 @@ class CartLineInput {
     required this.modifierLabels,
     required this.lineTotal,
     this.selectedModifiers = const <SelectedModifier>[],
+    this.categoryId,
+    this.categoryName,
   });
 
   final String lineId;
@@ -558,6 +737,8 @@ class CartLineInput {
   final List<String> modifierLabels;
   final double lineTotal;
   final List<SelectedModifier> selectedModifiers;
+  final String? categoryId;
+  final String? categoryName;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'lineId': lineId,
@@ -568,6 +749,8 @@ class CartLineInput {
     'unitPrice': unitPrice,
     'modifierLabels': modifierLabels,
     'lineTotal': lineTotal,
+    if (categoryId != null) 'categoryId': categoryId,
+    if (categoryName != null) 'categoryName': categoryName,
     'selectedModifiers': selectedModifiers
         .map((item) => item.toJson())
         .toList(growable: false),
@@ -583,6 +766,8 @@ class CartLineInput {
       unitPrice: _numValue(json['unitPrice']),
       modifierLabels: _readStringList(json['modifierLabels']),
       lineTotal: _numValue(json['lineTotal']),
+      categoryId: json['categoryId'] as String?,
+      categoryName: json['categoryName'] as String?,
       selectedModifiers: _readList(
         json['selectedModifiers'],
         SelectedModifier.fromJson,
@@ -671,6 +856,8 @@ class OrderLineSnapshot {
     required this.modifierLabels,
     required this.lineTotal,
     this.selectedModifiers = const <SelectedModifier>[],
+    this.categoryId,
+    this.categoryName,
   });
 
   final String lineId;
@@ -681,6 +868,8 @@ class OrderLineSnapshot {
   final List<String> modifierLabels;
   final double lineTotal;
   final List<SelectedModifier> selectedModifiers;
+  final String? categoryId;
+  final String? categoryName;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'lineId': lineId,
@@ -690,6 +879,8 @@ class OrderLineSnapshot {
     'quantity': quantity,
     'modifierLabels': modifierLabels,
     'lineTotal': lineTotal,
+    if (categoryId != null) 'categoryId': categoryId,
+    if (categoryName != null) 'categoryName': categoryName,
     'selectedModifiers': selectedModifiers
         .map((item) => item.toJson())
         .toList(growable: false),
@@ -704,6 +895,8 @@ class OrderLineSnapshot {
       quantity: _intValue(json['quantity'], 1),
       modifierLabels: _readStringList(json['modifierLabels']),
       lineTotal: _numValue(json['lineTotal']),
+      categoryId: json['categoryId'] as String?,
+      categoryName: json['categoryName'] as String?,
       selectedModifiers: _readList(
         json['selectedModifiers'],
         SelectedModifier.fromJson,
@@ -755,10 +948,17 @@ class OrderTotals {
   double get total => amountDue;
 }
 
+String formatDailyOrderNumber(DateTime date, int sequence) {
+  final dateStr =
+      '${date.year}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}';
+  return '$dateStr-${sequence.toString().padLeft(3, '0')}';
+}
+
 class OrderQueueRecord {
   const OrderQueueRecord({
     required this.id,
     required this.sequence,
+    this.orderNumber,
     required this.status,
     required this.customerName,
     required this.orderType,
@@ -768,11 +968,19 @@ class OrderQueueRecord {
 
   final String id;
   final int sequence;
+  final String? orderNumber;
   final OrderQueueStatus status;
   final String customerName;
   final String orderType;
   final DateTime createdAt;
   final List<OrderLineSnapshot> items;
+
+  String get displayOrderNumber {
+    if (orderNumber != null && orderNumber!.isNotEmpty) {
+      return orderNumber!;
+    }
+    return formatDailyOrderNumber(createdAt, sequence);
+  }
 
   double get subtotal =>
       items.fold<double>(0, (sum, item) => sum + item.lineTotal);
@@ -780,6 +988,7 @@ class OrderQueueRecord {
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
     'sequence': sequence,
+    'orderNumber': displayOrderNumber,
     'status': status.name,
     'customerName': customerName,
     'orderType': orderType,
@@ -791,6 +1000,7 @@ class OrderQueueRecord {
     return OrderQueueRecord(
       id: json['id'] as String? ?? '',
       sequence: _intValue(json['sequence']),
+      orderNumber: json['orderNumber'] as String?,
       status: _enumFromName(
         OrderQueueStatus.values,
         json['status'] as String?,
@@ -886,6 +1096,7 @@ class OrderRecord {
   const OrderRecord({
     required this.id,
     required this.sequence,
+    String? orderNumber,
     required this.status,
     required this.orderType,
     required this.paymentType,
@@ -911,14 +1122,24 @@ class OrderRecord {
     this.vatEnabled = true,
     this.statusHistory = const [],
     this.originalQueue,
-  });
+  }) : _orderNumber = orderNumber;
 
   final List<OrderStatusChange> statusHistory;
   final OrderQueueRecord? originalQueue;
 
   final String id;
   final int sequence;
+  final String? _orderNumber;
   final OrderStatus status;
+
+  String get orderNumber {
+    final num = _orderNumber;
+    if (num != null && num.isNotEmpty) {
+      return num;
+    }
+    return formatDailyOrderNumber(createdAt, sequence);
+  }
+
   final String orderType;
   final PaymentType paymentType;
   final String cashierName;
@@ -953,15 +1174,18 @@ class OrderRecord {
     required OrderTotals totals,
     required int sequence,
     String? id,
+    String? orderNumber,
   }) {
+    final now = DateTime.now();
     return OrderRecord(
       id: id ?? 'ORD-$sequence',
       sequence: sequence,
+      orderNumber: orderNumber ?? formatDailyOrderNumber(now, sequence),
       status: OrderStatus.paid,
       orderType: draft.orderType,
       paymentType: draft.paymentType,
       cashierName: draft.cashierName,
-      createdAt: DateTime.now(),
+      createdAt: now,
       subtotal: totals.subtotal,
       discount: totals.discount,
       tax: totals.tax,
@@ -975,6 +1199,8 @@ class OrderRecord {
               lineId: line.lineId,
               productId: line.productId,
               productName: line.productName,
+              categoryId: line.categoryId,
+              categoryName: line.categoryName,
               unitPrice: line.unitPrice,
               quantity: line.quantity,
               modifierLabels: line.modifierLabels,
@@ -1001,6 +1227,7 @@ class OrderRecord {
     if (originalQueue != null) 'originalQueue': originalQueue!.toJson(),
     'id': id,
     'sequence': sequence,
+    'orderNumber': orderNumber,
     'status': status.name,
     'orderType': orderType,
     'paymentType': paymentType.name,
@@ -1039,6 +1266,7 @@ class OrderRecord {
           : null,
       id: json['id'] as String? ?? '',
       sequence: _intValue(json['sequence']),
+      orderNumber: json['orderNumber'] as String?,
       status: _enumFromName(
         OrderStatus.values,
         json['status'] as String?,

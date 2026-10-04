@@ -1,3 +1,4 @@
+import 'discount_settings_dialog.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -14,6 +15,9 @@ import '../../utils/receipt_printer.dart' as receipt_printer;
 import 'admin_dashboard.dart';
 import 'cashier_dashboard.dart';
 import 'order_status_dialog.dart';
+import 'complete_all_orders_button.dart';
+import 'auto_hiding_snack_bar.dart';
+import 'reports/pos_reports_dashboard.dart';
 
 enum _ShellSection {
   cashier,
@@ -116,7 +120,9 @@ class _CoffeePosShellState extends State<CoffeePosShell> {
                     ],
                   )
                 : Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.all(
+                      _section == _ShellSection.cashier ? 8 : 16,
+                    ),
                     child: _SectionHost(
                       section: _section,
                       controller: controller,
@@ -201,7 +207,7 @@ class _SectionHost extends StatelessWidget {
             key: const ValueKey('admin'),
             controller: controller,
           ),
-          _ShellSection.reports => _ReportsPage(
+          _ShellSection.reports => PosReportsDashboard(
             key: const ValueKey('reports'),
             controller: controller,
             compactLandscape: compactLandscape,
@@ -251,12 +257,12 @@ class _PermanentSidebar extends StatelessWidget {
         selectedIcon: Icons.receipt_long,
         label: 'Orders',
       ),
-      const _SidebarItemData(
-        section: _ShellSection.customers,
-        icon: Icons.person_outline,
-        selectedIcon: Icons.person,
-        label: 'Customers',
-      ),
+      // const _SidebarItemData(
+      //   section: _ShellSection.customers,
+      //   icon: Icons.person_outline,
+      //   selectedIcon: Icons.person,
+      //   label: 'Customers',
+      // ),
       const _SidebarItemData(
         section: _ShellSection.admin,
         icon: Icons.dashboard_outlined,
@@ -512,12 +518,12 @@ List<_SidebarItemData> _drawerItems(CoffeePosController controller) {
       selectedIcon: Icons.receipt_long,
       label: 'Orders',
     ),
-    const _SidebarItemData(
-      section: _ShellSection.customers,
-      icon: Icons.person_outline,
-      selectedIcon: Icons.person,
-      label: 'Customers',
-    ),
+    // const _SidebarItemData(
+    //   section: _ShellSection.customers,
+    //   icon: Icons.person_outline,
+    //   selectedIcon: Icons.person,
+    //   label: 'Customers',
+    // ),
     const _SidebarItemData(
       section: _ShellSection.admin,
       icon: Icons.dashboard_outlined,
@@ -759,6 +765,12 @@ class _InProgressOrdersPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final activeOrders = controller.activeOrders;
+    final completable = activeOrders
+        .where(
+          (order) =>
+              controller.transactionForQueue(order)?.status == OrderStatus.paid,
+        )
+        .toList();
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -768,6 +780,15 @@ class _InProgressOrdersPage extends StatelessWidget {
           compactLandscape: compactLandscape,
           trailing: _CountPill(count: activeOrders.length, label: 'active'),
         ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: CompleteAllOrdersButton(
+            orders: completable,
+            unpaidCount: activeOrders.length - completable.length,
+            onComplete: controller.completeOrder,
+          ),
+        ),
         const SizedBox(height: 16),
         if (activeOrders.isEmpty)
           const _EmptyState(
@@ -776,71 +797,108 @@ class _InProgressOrdersPage extends StatelessWidget {
             subtitle: 'Current in-progress tickets will appear here.',
           )
         else
-          ...activeOrders.map(
-            (order) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _OrderTicketCard(
-                title: 'Order #${order.sequence}',
-                subtitle: '${order.orderType}  •  ${order.customerName}',
-                status: _queueStatusText(order.status),
-                time: _formatTime(context, order.createdAt),
-                itemCount: order.items.fold<int>(
-                  0,
-                  (sum, item) => sum + item.quantity,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final isVeryNarrow = width < 360;
+              final isNarrow = width < 460;
+
+              final int columns;
+              final double childAspectRatio;
+
+              if (width < 650) {
+                columns = 2;
+                childAspectRatio = isVeryNarrow
+                    ? 0.90
+                    : (isNarrow ? 0.98 : 1.15);
+              } else if (width < 1000) {
+                columns = 3;
+                childAspectRatio = 1.45;
+              } else if (width < 1400) {
+                columns = 4;
+                childAspectRatio = 1.65;
+              } else {
+                columns = 5;
+                childAspectRatio = 1.75;
+              }
+
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: activeOrders.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  crossAxisSpacing: isNarrow ? 8 : 12,
+                  mainAxisSpacing: isNarrow ? 8 : 12,
+                  childAspectRatio: childAspectRatio,
                 ),
-                total:
-                    controller.transactionForQueue(order)?.total ??
-                    order.subtotal,
-                compactLandscape: compactLandscape,
-                primaryActionLabel: order.status == OrderQueueStatus.held
-                    ? 'Continue Order'
-                    : 'View',
-                onPrimaryAction: order.status == OrderQueueStatus.held
-                    ? () => onContinue(order)
-                    : () => onView(order),
-                onCancel: () => _changeOrderStatus(
-                  context,
-                  controller,
-                  order,
-                  OrderAction.cancel,
-                ),
-                onRefund:
-                    controller.transactionForQueue(order)?.status ==
-                        OrderStatus.paid
-                    ? () => _changeOrderStatus(
-                        context,
-                        controller,
-                        order,
-                        OrderAction.refund,
-                      )
-                    : null,
-                secondaryActionLabel: 'Complete',
-                onSecondaryAction: () => onComplete(order),
-                onPrintTicket: () async {
-                  final messenger = ScaffoldMessenger.of(context);
-                  final result = await controller.printPreparationTicket(order);
-                  if (context.mounted) {
-                    if (result.isSuccess) {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Preparation ticket printed for ${order.id}',
-                          ),
-                        ),
-                      );
-                    } else {
-                      messenger.showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Print ticket failed: ${result.message ?? "Unknown error"}',
-                          ),
-                        ),
-                      );
-                    }
-                  }
+                itemBuilder: (context, index) {
+                  final order = activeOrders[index];
+                  return _OrderTicketCard(
+                    title: 'Order #${order.displayOrderNumber}',
+                    subtitle: '${order.orderType}  •  ${order.customerName}',
+                    status: _queueStatusText(order.status),
+                    time: _formatTime(context, order.createdAt),
+                    itemCount: order.items.fold<int>(
+                      0,
+                      (sum, item) => sum + item.quantity,
+                    ),
+                    total:
+                        controller.transactionForQueue(order)?.total ??
+                        order.subtotal,
+                    compactLandscape: compactLandscape,
+                    primaryActionLabel: order.status == OrderQueueStatus.held
+                        ? 'Continue Order'
+                        : 'View',
+                    onPrimaryAction: order.status == OrderQueueStatus.held
+                        ? () => onContinue(order)
+                        : () => onView(order),
+                    onCancel: () => _changeOrderStatus(
+                      context,
+                      controller,
+                      order,
+                      OrderAction.cancel,
+                    ),
+                    onRefund:
+                        controller.transactionForQueue(order)?.status ==
+                            OrderStatus.paid
+                        ? () => _changeOrderStatus(
+                            context,
+                            controller,
+                            order,
+                            OrderAction.refund,
+                          )
+                        : null,
+                    secondaryActionLabel: 'Complete',
+                    onSecondaryAction: () => onComplete(order),
+                    onPrintTicket: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final result =
+                          await controller.printPreparationTicket(order);
+                      if (context.mounted) {
+                        if (result.isSuccess) {
+                          showAutoHidingSnackBar(
+                            messenger: messenger,
+                            content: Text(
+                              'Preparation ticket printed for ${order.id}',
+                            ),
+                            duration: const Duration(seconds: 5),
+                          );
+                        } else {
+                          showAutoHidingSnackBar(
+                            messenger: messenger,
+                            content: Text(
+                              'Print ticket failed: ${result.message ?? "Unknown error"}',
+                            ),
+                            duration: const Duration(seconds: 5),
+                          );
+                        }
+                      }
+                    },
+                  );
                 },
-              ),
-            ),
+              );
+            },
           ),
       ],
     );
@@ -872,6 +930,7 @@ class _OrderHistoryPageState extends State<_OrderHistoryPage> {
           final matchesQuery =
               _query.trim().isEmpty ||
               order.id.toLowerCase().contains(_query.toLowerCase()) ||
+              order.orderNumber.toLowerCase().contains(_query.toLowerCase()) ||
               order.cashierName.toLowerCase().contains(_query.toLowerCase());
           final matchesFilter = switch (_filter) {
             _OrderHistoryFilter.all => true,
@@ -933,15 +992,51 @@ class _OrderHistoryPageState extends State<_OrderHistoryPage> {
             subtitle: 'Try another filter or search term.',
           )
         else
-          ...orders.map(
-            (order) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _HistoryOrderCard(
-                controller: widget.controller,
-                order: order,
-                compactLandscape: widget.compactLandscape,
-              ),
-            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final isVeryNarrow = width < 360;
+              final isNarrow = width < 460;
+
+              final int columns;
+              final double childAspectRatio;
+
+              if (width < 650) {
+                columns = 2;
+                childAspectRatio = isVeryNarrow
+                    ? 0.88
+                    : (isNarrow ? 0.96 : 1.15);
+              } else if (width < 1000) {
+                columns = 3;
+                childAspectRatio = 1.40;
+              } else if (width < 1400) {
+                columns = 4;
+                childAspectRatio = 1.55;
+              } else {
+                columns = 5;
+                childAspectRatio = 1.65;
+              }
+
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: orders.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  crossAxisSpacing: isNarrow ? 8 : 12,
+                  mainAxisSpacing: isNarrow ? 8 : 12,
+                  childAspectRatio: childAspectRatio,
+                ),
+                itemBuilder: (context, index) {
+                  final order = orders[index];
+                  return _HistoryOrderCard(
+                    controller: widget.controller,
+                    order: order,
+                    compactLandscape: widget.compactLandscape,
+                  );
+                },
+              );
+            },
           ),
       ],
     );
@@ -1049,7 +1144,6 @@ class _CustomersPage extends StatelessWidget {
 
 class _ReportsPage extends StatefulWidget {
   const _ReportsPage({
-    super.key,
     required this.controller,
     required this.compactLandscape,
   });
@@ -1342,13 +1436,22 @@ class _SettingsPage extends StatelessWidget {
               title: 'Settings',
               subtitle: 'Store configuration and POS preferences.',
               compactLandscape: false,
-              trailing: _CountPill(count: 9, label: 'sections'),
+              trailing: _CountPill(
+                count: controller.role == Role.admin ? 13 : 12,
+                label: 'sections',
+              ),
             ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
+                _SettingsTile(
+                  icon: Icons.upload_file_outlined,
+                  title: 'Upload Menu',
+                  subtitle: 'Import products and categories from Excel.',
+                  onTap: () => importProductsExcel(context, controller),
+                ),
                 _SettingsTile(
                   icon: Icons.store_outlined,
                   title: 'Store Information',
@@ -1367,6 +1470,18 @@ class _SettingsPage extends StatelessWidget {
                   subtitle:
                       'VAT ${(controller.taxRate * 100).toStringAsFixed(0)}% · Service ${(controller.serviceChargeRate * 100).toStringAsFixed(0)}%',
                   onTap: () => _editTaxSettings(context, controller),
+                ),
+                _SettingsTile(
+                  icon: Icons.local_offer_outlined,
+                  title: 'Discount Options',
+                  subtitle: controller.discountsEnabled
+                      ? '${controller.availableDiscounts.length} discount types enabled'
+                      : 'Discounts off',
+                  onTap: () => showDialog<void>(
+                    context: context,
+                    builder: (_) =>
+                        DiscountSettingsDialog(controller: controller),
+                  ),
                 ),
                 _SettingsTile(
                   icon: Icons.payments_outlined,
@@ -2645,85 +2760,190 @@ class _OrderTicketCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(compactLandscape ? 12 : 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 250;
+        final isVeryCompact = constraints.maxWidth < 195;
+        final padding = isVeryCompact ? 8.0 : (isCompact ? 10.0 : (compactLandscape ? 12.0 : 14.0));
+
+        final Color statusBg;
+        final Color statusFg;
+        switch (status.toLowerCase()) {
+          case 'pending':
+            statusBg = const Color(0xFFFFEDE1);
+            statusFg = const Color(0xFF8B4513);
+            break;
+          case 'preparing':
+            statusBg = const Color(0xFFFFF3E0);
+            statusFg = const Color(0xFFE65100);
+            break;
+          case 'held':
+            statusBg = const Color(0xFFECEFF1);
+            statusFg = const Color(0xFF455A64);
+            break;
+          case 'awaiting payment':
+            statusBg = const Color(0xFFFFEBEE);
+            statusFg = const Color(0xFFC62828);
+            break;
+          default:
+            statusBg = const Color(0xFFFFE8D2);
+            statusFg = const Color(0xFF6B4423);
+        }
+
+        return Card(
+          margin: EdgeInsets.zero,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFEFE6DC)),
+          ),
+          color: const Color(0xFFFFFDFB),
+          child: Padding(
+            padding: EdgeInsets.all(padding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Top Header: Title + Subtitle and Status Pill
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: isVeryCompact ? 11.5 : (isCompact ? 12.5 : 14),
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF2F251E),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              fontSize: isVeryCompact ? 10 : (isCompact ? 10.5 : 11.5),
+                              color: const Color(0xFF8C7564),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isVeryCompact ? 5 : 7,
+                        vertical: isVeryCompact ? 2 : 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusBg,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: statusFg.withValues(alpha: 0.2)),
+                      ),
+                      child: Text(
+                        status,
+                        style: TextStyle(
+                          fontSize: isVeryCompact ? 9 : 10,
+                          fontWeight: FontWeight.w700,
+                          color: statusFg,
+                        ),
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+
+                // Center Meta: Items count, time, and total
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '$itemCount items • $time',
+                            style: TextStyle(
+                              fontSize: isVeryCompact ? 10 : (isCompact ? 10.5 : 11.5),
+                              color: const Color(0xFF8C7564),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _money(total),
+                          style: TextStyle(
+                            fontSize: isVeryCompact ? 12 : (isCompact ? 13 : 14),
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF6B4423),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+
+                // Bottom Action buttons
+                Row(
+                  children: [
+                    if (onCancel != null) ...[
+                      if (isCompact)
+                        IconButton(
+                          icon: const Icon(Icons.cancel_outlined, size: 16),
+                          color: const Color(0xFFB5442F),
+                          tooltip: 'Cancel Order',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                          onPressed: onCancel!,
+                        )
+                      else ...[
+                        _TicketActionButton(
+                          label: 'Cancel',
+                          icon: Icons.cancel_outlined,
+                          onPressed: onCancel!,
+                          destructive: true,
+                          compact: isCompact,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                     ],
-                  ),
-                ),
-                Text(status, style: Theme.of(context).textTheme.labelLarge),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 16,
-              runSpacing: 6,
-              children: [
-                Text('$itemCount items'),
-                Text(time),
-                Text(_money(total)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (onCancel != null)
-                  _TicketActionButton(
-                    label: 'Cancel Order',
-                    icon: Icons.cancel_outlined,
-                    onPressed: onCancel!,
-                    destructive: true,
-                  ),
-                if (onRefund != null)
-                  _TicketActionButton(
-                    label: 'Refund',
-                    icon: Icons.currency_exchange,
-                    onPressed: onRefund!,
-                    destructive: true,
-                  ),
-                if (onPrintTicket != null)
-                  _TicketActionButton(
-                    label: 'Print Ticket',
-                    icon: Icons.receipt_long_outlined,
-                    onPressed: onPrintTicket!,
-                  ),
-                _TicketActionButton(
-                  label: secondaryActionLabel,
-                  icon: Icons.check_circle_outline,
-                  onPressed: onSecondaryAction,
-                  destructive: true,
-                ),
-                _TicketActionButton(
-                  label: primaryActionLabel,
-                  icon: orderActionIcon(primaryActionLabel),
-                  onPressed: onPrimaryAction,
-                  filled: true,
+                    Expanded(
+                      child: _TicketActionButton(
+                        label: secondaryActionLabel,
+                        icon: Icons.check_circle_outline,
+                        onPressed: onSecondaryAction,
+                        destructive: true,
+                        compact: isCompact,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: _TicketActionButton(
+                        label: isVeryCompact && primaryActionLabel == 'Continue Order'
+                            ? 'Continue'
+                            : primaryActionLabel,
+                        icon: orderActionIcon(primaryActionLabel),
+                        onPressed: onPrimaryAction,
+                        filled: true,
+                        compact: isCompact,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -2741,6 +2961,7 @@ class _TicketActionButton extends StatelessWidget {
     required this.onPressed,
     this.filled = false,
     this.destructive = false,
+    this.compact = false,
   });
 
   final String label;
@@ -2748,6 +2969,7 @@ class _TicketActionButton extends StatelessWidget {
   final VoidCallback onPressed;
   final bool filled;
   final bool destructive;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -2758,50 +2980,55 @@ class _TicketActionButton extends StatelessWidget {
     final Color background = filled
         ? const Color(0xFFFF8F4F)
         : useWarning
-        ? const Color(0xFFFDE8E3)
-        : const Color(0xFFFFE8D2);
+            ? const Color(0xFFFDE8E3)
+            : const Color(0xFFFFE8D2);
     final Color borderColor = foreground.withValues(alpha: 0.18);
-    final button = filled
-        ? FilledButton.icon(
-            onPressed: onPressed,
-            icon: Icon(icon, size: 16),
-            label: Text(label),
-            style: FilledButton.styleFrom(
-              backgroundColor: background,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              textStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              visualDensity: VisualDensity.compact,
+    final fontSize = compact ? 10.5 : 12.0;
+    final iconSize = compact ? 13.0 : 15.0;
+    final padding = EdgeInsets.symmetric(
+      horizontal: compact ? 4 : 8,
+      vertical: compact ? 3 : 5,
+    );
+    final height = compact ? 28.0 : 32.0;
+
+    final child = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: iconSize, color: filled ? Colors.white : foreground),
+        SizedBox(width: compact ? 3 : 5),
+        Flexible(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w700,
+              color: filled ? Colors.white : foreground,
             ),
-          )
-        : OutlinedButton.icon(
-            onPressed: onPressed,
-            icon: Icon(icon, size: 16),
-            label: Text(label),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: foreground,
-              backgroundColor: background,
-              side: BorderSide(color: borderColor),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              textStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              visualDensity: VisualDensity.compact,
-            ),
-          );
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 34),
-      child: button,
+      constraints: BoxConstraints.tightFor(height: height),
+      child: Material(
+        color: background,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: filled ? BorderSide.none : BorderSide(color: borderColor),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          child: Padding(
+            padding: padding,
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2830,127 +3057,291 @@ class _HistoryOrderCardState extends State<_HistoryOrderCard> {
     final controller = widget.controller;
     final compactLandscape = widget.compactLandscape;
 
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(compactLandscape ? 12 : 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 250;
+        final isVeryCompact = constraints.maxWidth < 195;
+        final padding = isVeryCompact ? 8.0 : (isCompact ? 10.0 : (compactLandscape ? 12.0 : 14.0));
+
+        final isVoided = order.status == OrderStatus.voided;
+        final isCompleted = order.status == OrderStatus.paid &&
+            order.statusHistory.any((entry) => entry.action == OrderAction.complete);
+        final isRefunded = order.status == OrderStatus.refunded;
+
+        final String statusLabel = isVoided
+            ? 'CANCELLED'
+            : isCompleted
+                ? 'COMPLETED'
+                : isRefunded
+                    ? 'REFUNDED'
+                    : order.status.name.toUpperCase();
+
+        final Color statusBg = isCompleted
+            ? const Color(0xFFE8F5E9)
+            : isVoided
+                ? const Color(0xFFFFEBEE)
+                : isRefunded
+                    ? const Color(0xFFFFF3E0)
+                    : const Color(0xFFFFEDE1);
+
+        final Color statusFg = isCompleted
+            ? const Color(0xFF2E7D32)
+            : isVoided
+                ? const Color(0xFFC62828)
+                : isRefunded
+                    ? const Color(0xFFE65100)
+                    : const Color(0xFF8B4513);
+
+        final String printLabel = _isPrinting
+            ? 'Printing...'
+            : (isCompact ? 'Print' : 'Print receipt');
+
+        return Card(
+          margin: EdgeInsets.zero,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFEFE6DC)),
+          ),
+          color: const Color(0xFFFFFDFB),
+          child: Padding(
+            padding: EdgeInsets.all(padding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Top Header: Order Number and Status badge
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Order #${order.orderNumber}',
+                            style: TextStyle(
+                              fontSize: isVeryCompact ? 11.5 : (isCompact ? 12.5 : 14),
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF2F251E),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_formatDateTime(context, order.createdAt)}  •  ${order.id}',
+                            style: TextStyle(
+                              fontSize: isVeryCompact ? 9.5 : (isCompact ? 10 : 11),
+                              color: const Color(0xFF8C7564),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isVeryCompact ? 5 : 7,
+                        vertical: isVeryCompact ? 2 : 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusBg,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: statusFg.withValues(alpha: 0.2)),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          fontSize: isVeryCompact ? 9 : 10,
+                          fontWeight: FontWeight.w700,
+                          color: statusFg,
+                        ),
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+
+                // Center: Details (Cashier, Payment, items count, and latest status change if any)
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        order.id,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatDateTime(context, order.createdAt),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Cashier: ${order.cashierName}',
+                          style: TextStyle(
+                            fontSize: isVeryCompact ? 10 : 11,
+                            color: const Color(0xFF5D4634),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Payment: ${order.paymentType.name.toUpperCase()}  •  ${order.items.length} items',
+                          style: TextStyle(
+                            fontSize: isVeryCompact ? 10 : 11,
+                            color: const Color(0xFF5D4634),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        for (final change in order.statusHistory) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            '${switch (change.action) {
+                              OrderAction.complete => 'Completed',
+                              OrderAction.cancel => 'Cancelled',
+                              OrderAction.refund => 'Refunded',
+                            }} by ${change.cashierName} • ${_formatDateTime(context, change.at)}',
+                            style: TextStyle(
+                              fontSize: isVeryCompact ? 9 : 10,
+                              color: const Color(0xFF8C7564),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (change.action == OrderAction.refund)
+                            Text(
+                              'Refund amount: ${_money(change.amount)}',
+                              style: TextStyle(
+                                fontSize: isVeryCompact ? 9 : 10,
+                                color: const Color(0xFFB5442F),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          if (change.reason.isNotEmpty)
+                            Text(
+                              'Reason: ${change.reason}',
+                              style: TextStyle(
+                                fontSize: isVeryCompact ? 9 : 10,
+                                color: const Color(0xFF8C7564),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
-                Text(
-                  order.status == OrderStatus.voided
-                      ? 'CANCELLED'
-                      : order.status == OrderStatus.paid &&
-                            order.statusHistory.any(
-                              (entry) => entry.action == OrderAction.complete,
-                            )
-                      ? 'COMPLETED'
-                      : order.status.name.toUpperCase(),
+                const SizedBox(height: 4),
+
+                // Bottom: Total and Print Receipt Button
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Total: ${_money(_orderSummary(order).total)}',
+                        style: TextStyle(
+                          fontSize: isVeryCompact ? 11.5 : (isCompact ? 12 : 13),
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF6B4423),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    ConstrainedBox(
+                      constraints: BoxConstraints.tightFor(
+                        height: isVeryCompact ? 28 : 32,
+                      ),
+                      child: OutlinedButton.icon(
+                        onPressed: (order.status == OrderStatus.paid && !_isPrinting)
+                            ? () async {
+                                setState(() => _isPrinting = true);
+                                final messenger = ScaffoldMessenger.of(context);
+                                try {
+                                  final printResult = await controller.printReceipt(
+                                    order,
+                                    manualReprint: true,
+                                  );
+                                  final String msg;
+                                  if (printResult.status ==
+                                      receipt_printer.PrintStatus.submittedToDialog) {
+                                    msg = 'Print dialog opened for ${order.id}';
+                                  } else if (printResult.isSuccess) {
+                                    msg = 'Receipt sent for ${order.id}';
+                                  } else if (printResult.status ==
+                                      receipt_printer.PrintStatus.unknown) {
+                                    msg =
+                                        'Print status unknown. Check printer before reprinting.';
+                                  } else if (printResult.status ==
+                                      receipt_printer.PrintStatus.canceled) {
+                                    msg = 'Print cancelled.';
+                                  } else {
+                                    msg =
+                                        'Unable to print receipt. Please check the printer connection.';
+                                  }
+                                  showAutoHidingSnackBar(
+                                    messenger: messenger,
+                                    content: Text(msg),
+                                    duration: const Duration(seconds: 5),
+                                  );
+                                } catch (error, stackTrace) {
+                                  debugPrint(
+                                    'Receipt print failed for ${order.id}: '
+                                    '$error\n$stackTrace',
+                                  );
+                                  showAutoHidingSnackBar(
+                                    messenger: messenger,
+                                    content: const Text(
+                                      'Unable to print receipt. Please check the printer connection.',
+                                    ),
+                                    duration: const Duration(seconds: 5),
+                                  );
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => _isPrinting = false);
+                                  }
+                                }
+                              }
+                            : null,
+                        icon: _isPrinting
+                            ? SizedBox(
+                                width: isVeryCompact ? 11 : 13,
+                                height: isVeryCompact ? 11 : 13,
+                                child: const CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Icon(Icons.receipt_long, size: isVeryCompact ? 13 : 15),
+                        label: Text(printLabel),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF6B4423),
+                          backgroundColor: const Color(0xFFFFE8D2),
+                          side: BorderSide(
+                            color: const Color(0xFF6B4423).withValues(alpha: 0.18),
+                          ),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isVeryCompact ? 6 : 8,
+                            vertical: 0,
+                          ),
+                          textStyle: TextStyle(
+                            fontSize: isVeryCompact ? 10 : 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text('Cashier: ${order.cashierName}'),
-            Text('Payment: ${order.paymentType.name.toUpperCase()}'),
-            Text('Items: ${order.items.length}'),
-            for (final change in order.statusHistory) ...[
-              const SizedBox(height: 6),
-              Text(
-                '${switch (change.action) {
-                  OrderAction.complete => 'Completed',
-                  OrderAction.cancel => 'Cancelled',
-                  OrderAction.refund => 'Refunded',
-                }} by ${change.cashierName} • ${_formatDateTime(context, change.at)}',
-              ),
-              if (change.action == OrderAction.refund)
-                Text('Refund amount: ${_money(change.amount)}'),
-              if (change.reason.isNotEmpty) Text('Reason: ${change.reason}'),
-            ],
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text('Total: ${_money(_orderSummary(order).total)}'),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: (order.status == OrderStatus.paid && !_isPrinting)
-                      ? () async {
-                          setState(() => _isPrinting = true);
-                          final messenger = ScaffoldMessenger.of(context);
-                          try {
-                            final printResult = await controller.printReceipt(
-                              order,
-                              manualReprint: true,
-                            );
-                            final String msg;
-                            if (printResult.status ==
-                                receipt_printer.PrintStatus.submittedToDialog) {
-                              msg = 'Print dialog opened for ${order.id}';
-                            } else if (printResult.isSuccess) {
-                              msg = 'Receipt sent for ${order.id}';
-                            } else if (printResult.status ==
-                                receipt_printer.PrintStatus.unknown) {
-                              msg =
-                                  'Print status unknown. Check printer before reprinting.';
-                            } else if (printResult.status ==
-                                receipt_printer.PrintStatus.canceled) {
-                              msg = 'Print cancelled.';
-                            } else {
-                              msg =
-                                  'Unable to print receipt. Please check the printer connection.';
-                            }
-                            messenger.showSnackBar(
-                              SnackBar(content: Text(msg)),
-                            );
-                          } catch (error, stackTrace) {
-                            debugPrint(
-                              'Receipt print failed for ${order.id}: '
-                              '$error\n$stackTrace',
-                            );
-                            messenger.showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Unable to print receipt. Please check the printer connection.',
-                                ),
-                              ),
-                            );
-                          } finally {
-                            if (mounted) {
-                              setState(() => _isPrinting = false);
-                            }
-                          }
-                        }
-                      : null,
-                  icon: _isPrinting
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.receipt_long, size: 16),
-                  label: Text(_isPrinting ? 'Printing...' : 'Print receipt'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -3470,7 +3861,7 @@ Future<void> _changeOrderStatus(
     barrierDismissible: false,
     builder: (_) => OrderStatusDialog(
       action: action,
-      orderNumber: order.sequence,
+      orderNumber: order.displayOrderNumber,
       amount: amount,
       onConfirm: (reason) => controller.changeOrderStatus(
         order,
@@ -3481,16 +3872,16 @@ Future<void> _changeOrderStatus(
     ),
   );
   if (changed == true && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Order #${order.sequence} ${switch (action) {
-            OrderAction.complete => 'completed',
-            OrderAction.cancel => 'cancelled',
-            OrderAction.refund => 'refunded',
-          }}. Saved in order history.',
-        ),
+    showAutoHidingSnackBar(
+      messenger: ScaffoldMessenger.of(context),
+      content: Text(
+        'Order #${order.displayOrderNumber} ${switch (action) {
+          OrderAction.complete => 'completed',
+          OrderAction.cancel => 'cancelled',
+          OrderAction.refund => 'refunded',
+        }}. Saved in order history.',
       ),
+      duration: const Duration(seconds: 5),
     );
   }
 }
