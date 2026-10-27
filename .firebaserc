@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "bites-and-brew-506111"
-  }
+  },
+  "targets": {
+    "bites-and-brew-506111": {
+      "hosting": {
+        "lunan-pos": [
+          "lunan-pos"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

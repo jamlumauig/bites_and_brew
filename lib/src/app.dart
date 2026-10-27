@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'data/coffee_pos_repository.dart';
 import 'state/coffee_pos_controller.dart';
+import 'state/demo_session_manager.dart';
 import 'ui/screens/firebase_sign_in_screen.dart';
 import 'ui/screens/coffee_pos_home.dart';
 
@@ -29,7 +30,7 @@ class CoffeePosApp extends StatelessWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Haven & Co.',
+      title: 'LUNAN',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: colorScheme,
@@ -64,37 +65,65 @@ class CoffeePosApp extends StatelessWidget {
   }
 }
 
-class _FirebaseGate extends StatelessWidget {
+class _FirebaseGate extends StatefulWidget {
   const _FirebaseGate({this.error});
 
   final String? error;
 
   @override
+  State<_FirebaseGate> createState() => _FirebaseGateState();
+}
+
+class _FirebaseGateState extends State<_FirebaseGate> {
+  @override
+  void initState() {
+    super.initState();
+    DemoSessionManager.instance.init();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (Firebase.apps.isEmpty) {
-      return _FirebaseUnavailableScreen(error: error);
-    }
-
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const _FirebaseLoadingScreen();
+    return ListenableBuilder(
+      listenable: DemoSessionManager.instance,
+      builder: (context, _) {
+        if (DemoSessionManager.instance.isDemoMode) {
+          return const _CoffeePosSession(
+            isDemo: true,
+            key: ValueKey('demo-admin-session'),
+          );
         }
 
-        final user = snapshot.data;
-        if (user == null) {
-          return const FirebaseSignInScreen();
+        if (Firebase.apps.isEmpty) {
+          return _FirebaseUnavailableScreen(error: widget.error);
         }
 
-        return _CoffeePosSession(key: ValueKey(user.uid));
+        return StreamBuilder<User?>(
+          stream: FirebaseAuth.instance.authStateChanges(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const _FirebaseLoadingScreen();
+            }
+
+            final user = snapshot.data;
+            if (user == null) {
+              return const FirebaseSignInScreen();
+            }
+
+            return _CoffeePosSession(
+              isDemo: false,
+              key: ValueKey(user.uid),
+            );
+          },
+        );
       },
     );
   }
 }
 
 class _CoffeePosSession extends StatefulWidget {
-  const _CoffeePosSession({super.key});
+  const _CoffeePosSession({super.key, this.isDemo = false});
+
+  final bool isDemo;
 
   @override
   State<_CoffeePosSession> createState() => _CoffeePosSessionState();
@@ -108,6 +137,7 @@ class _CoffeePosSessionState extends State<_CoffeePosSession> {
     super.initState();
     _controller = CoffeePosController(
       repository: InMemoryCoffeePosRepository(),
+      isDemo: widget.isDemo,
     );
   }
 
@@ -170,19 +200,19 @@ class _FirebaseUnavailableScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Image.asset(
-                      'assets/haven_logo.png',
+                      'assets/lunan_logo.png',
                       width: 88,
                       height: 88,
                     ),
                     const SizedBox(height: 20),
                     Text(
-                      'Firebase is not initialized',
+                      'Store Service Offline',
                       style: theme.textTheme.headlineSmall,
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Firebase could not be initialized. Check that the project configuration matches your Firebase project and that Email/Password sign-in is enabled.',
+                      'Unable to connect to store services right now. Please check your internet connection or try again in a few moments.',
                       style: theme.textTheme.bodyMedium,
                       textAlign: TextAlign.center,
                     ),

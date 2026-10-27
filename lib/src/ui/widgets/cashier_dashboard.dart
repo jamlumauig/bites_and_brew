@@ -1232,12 +1232,15 @@ class _StickyOrderBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Flexible(
-                      child: Text(
-                        'View Order / Checkout',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'View Order / Checkout',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
@@ -1614,13 +1617,19 @@ Future<_CartCustomizationResult?> _showProductCustomizer(
                                       style: Theme.of(
                                         context,
                                       ).textTheme.titleSmall,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  Text(
-                                    helperText,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      helperText,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.end,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1902,15 +1911,15 @@ Future<void> _handlePostCheckoutPrinting({
       }
 
       final reason = result.status == receipt_printer.PrintStatus.canceled
-          ? 'Print cancelled'
-          : (result.message ?? 'Printing failed');
+          ? 'Print canceled.'
+          : 'Unable to print receipt. Please check printer connection.';
 
       showAutoHidingSnackBar(
         messenger: messenger,
         content: Text('Order #${order.orderNumber} saved. $reason'),
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
-          label: 'Print via Dialog',
+          label: 'Print Preview',
           onPressed: () {
             controller.printOrderPackage(
               order,
@@ -1924,10 +1933,12 @@ Future<void> _handlePostCheckoutPrinting({
       debugPrint('Receipt print failed for ${order.id}: $error\n$stackTrace');
       showAutoHidingSnackBar(
         messenger: messenger,
-        content: Text('Order #${order.orderNumber} saved. Print error: $error'),
+        content: Text(
+          'Order #${order.orderNumber} saved. Unable to print receipt. Please check printer connection.',
+        ),
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
-          label: 'Print via Dialog',
+          label: 'Print Preview',
           onPressed: () {
             controller.printOrderPackage(
               order,

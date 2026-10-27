@@ -303,7 +303,7 @@ class _PosReportsDashboardState extends State<PosReportsDashboard> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Analyze store performance, product sales, and transaction records.',
+                'Analyze store performance, product sales, and order records.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: const Color(0xFF756A63),
                     ),
@@ -549,7 +549,7 @@ class _PosReportsDashboardState extends State<PosReportsDashboard> {
                   icon: Icons.receipt_long_outlined,
                   iconColor: const Color(0xFFE87852),
                   iconBgColor: const Color(0xFFFBECE6),
-                  subtitle: 'Paid transactions',
+                  subtitle: 'Completed orders',
                 ),
                 _KpiCard(
                   width: cardWidth,
@@ -1838,17 +1838,18 @@ class _PosReportsDashboardState extends State<PosReportsDashboard> {
         totalOrders: totalOrders,
         itemsSold: totalItems,
         avgOrderValue: aov,
+        storeName: widget.controller.storeName,
       );
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Report exported to CSV: $savedPath'),
+          content: Text('Report saved to CSV: $savedPath'),
           backgroundColor: const Color(0xFF2E7D32),
         ),
       );
-    } catch (e) {
+    } catch (_) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Failed to export CSV: $e'),
+          content: const Text('Unable to download CSV report. Please try again.'),
           backgroundColor: Colors.red.shade700,
         ),
       );
@@ -1877,17 +1878,18 @@ class _PosReportsDashboardState extends State<PosReportsDashboard> {
         avgOrderValue: aov,
         categorySales: categorySales,
         topProducts: topProducts,
+        storeName: widget.controller.storeName,
       );
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Report exported to PDF: $savedPath'),
+          content: Text('Report saved to PDF: $savedPath'),
           backgroundColor: const Color(0xFF2E7D32),
         ),
       );
-    } catch (e) {
+    } catch (_) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Failed to export PDF: $e'),
+          content: const Text('Unable to download PDF report. Please try again.'),
           backgroundColor: Colors.red.shade700,
         ),
       );
@@ -1916,11 +1918,12 @@ class _PosReportsDashboardState extends State<PosReportsDashboard> {
         avgOrderValue: aov,
         categorySales: categorySales,
         topProducts: topProducts,
+        storeName: widget.controller.storeName,
       );
-    } catch (e) {
+    } catch (_) {
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Failed to print report: $e'),
+          content: const Text('Unable to print report. Please check the printer connection.'),
           backgroundColor: Colors.red.shade700,
         ),
       );
@@ -2684,11 +2687,13 @@ class _ReceiptDetailsDialogState extends State<_ReceiptDetailsDialog> {
                             final res = await widget.controller.printReceipt(order, manualReprint: true);
                             messenger.showSnackBar(
                               SnackBar(
-                                content: Text(res.isSuccess ? 'Customer receipt sent to printer' : 'Print submitted to system dialog'),
+                                content: Text(res.isSuccess ? 'Customer receipt sent to printer.' : 'Print window opened.'),
                               ),
                             );
-                          } catch (e) {
-                            messenger.showSnackBar(SnackBar(content: Text('Print error: $e')));
+                          } catch (_) {
+                            messenger.showSnackBar(
+                              const SnackBar(content: Text('Unable to print receipt. Please check the printer connection.')),
+                            );
                           } finally {
                             if (mounted) setState(() => _isPrintingCustomer = false);
                           }
@@ -2706,11 +2711,13 @@ class _ReceiptDetailsDialogState extends State<_ReceiptDetailsDialog> {
                             final res = await widget.controller.printOrderPackage(order, manualReprint: true);
                             messenger.showSnackBar(
                               SnackBar(
-                                content: Text(res.isSuccess ? 'Kitchen package sent to printer' : 'Print submitted to system dialog'),
+                                content: Text(res.isSuccess ? 'Kitchen ticket sent to printer.' : 'Print window opened.'),
                               ),
                             );
-                          } catch (e) {
-                            messenger.showSnackBar(SnackBar(content: Text('Print error: $e')));
+                          } catch (_) {
+                            messenger.showSnackBar(
+                              const SnackBar(content: Text('Unable to print ticket. Please check the printer connection.')),
+                            );
                           } finally {
                             if (mounted) setState(() => _isPrintingKitchen = false);
                           }

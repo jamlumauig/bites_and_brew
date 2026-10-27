@@ -59,7 +59,7 @@ class _LoadingScreen extends StatelessWidget {
                 ],
               ),
               child: Image.asset(
-                'assets/haven_logo.png',
+                'assets/lunan_logo.png',
                 width: 64,
                 height: 64,
                 fit: BoxFit.contain,
@@ -67,8 +67,16 @@ class _LoadingScreen extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             Text(
-              'Loading Haven & Co.',
+              'Loading LUNAN',
               style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'May lugar ka rito.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontStyle: FontStyle.italic,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
             ),
             const SizedBox(height: 12),
             const SizedBox(

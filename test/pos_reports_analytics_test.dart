@@ -235,7 +235,7 @@ void main() {
       final csvContent = File(csvPath).readAsStringSync();
 
       // Verify metadata & columns
-      expect(csvContent, contains('Bites & Brew POS - Sales Report'));
+      expect(csvContent, contains('LUNAN POS - Sales Report'));
       expect(csvContent, contains('Reporting Period,"Oct 1, 2026 - Oct 3, 2026"'));
       expect(csvContent, contains('Total Sales,290.00'));
       expect(csvContent, contains('Total Orders,1'));

@@ -36,11 +36,12 @@ class ReportsExportService {
     required int totalOrders,
     required int itemsSold,
     required double avgOrderValue,
+    String storeName = 'LUNAN',
   }) async {
     final buffer = StringBuffer();
 
     // Metadata header
-    buffer.writeln('Bites & Brew POS - Sales Report');
+    buffer.writeln('$storeName POS - Sales Report');
     buffer.writeln('Reporting Period,${_escapeCsv(periodLabel)}');
     buffer.writeln('Generated,${_escapeCsv(DateTime.now().toIso8601String())}');
     buffer.writeln('Total Sales,${totalSales.toStringAsFixed(2)}');
@@ -132,7 +133,7 @@ class ReportsExportService {
     required double avgOrderValue,
     required Map<String, double> categorySales,
     required List<MapEntry<String, int>> topProducts,
-    String storeName = 'Bites & Brew',
+    String storeName = 'LUNAN',
   }) async {
     final pdf = pw.Document();
 
@@ -378,7 +379,7 @@ class ReportsExportService {
 
           // Orders Summary Table
           pw.Text(
-            'Order Transactions Log (${orders.length} orders)',
+            'Order History Log (${orders.length} orders)',
             style: pw.TextStyle(
               fontSize: 11,
               fontWeight: pw.FontWeight.bold,
@@ -468,7 +469,7 @@ class ReportsExportService {
           if (orders.length > 100) ...[
             pw.SizedBox(height: 6),
             pw.Text(
-              'Showing first 100 transactions in print summary. Download CSV for the full data.',
+              'Showing first 100 orders in print summary. Download CSV for the full data.',
               style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
             ),
           ],
@@ -515,7 +516,7 @@ class ReportsExportService {
     required double avgOrderValue,
     required Map<String, double> categorySales,
     required List<MapEntry<String, int>> topProducts,
-    String storeName = 'Bites & Brew',
+    String storeName = 'LUNAN',
   }) async {
     final bytes = await buildPdfBytes(
       periodLabel: periodLabel,
@@ -554,7 +555,7 @@ class ReportsExportService {
     required double avgOrderValue,
     required Map<String, double> categorySales,
     required List<MapEntry<String, int>> topProducts,
-    String storeName = 'Bites & Brew',
+    String storeName = 'LUNAN',
   }) async {
     final bytes = await buildPdfBytes(
       periodLabel: periodLabel,

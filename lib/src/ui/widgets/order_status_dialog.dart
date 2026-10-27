@@ -59,7 +59,7 @@ class _OrderStatusDialogState extends State<OrderStatusDialog> {
                       ? 'Return the payment using the original payment method, then record the full refund here.'
                       : complete
                       ? 'Mark this order as completed and remove it from In Progress.'
-                      : 'Cancel this order and keep the original transaction in history. Cancellation does not return a payment; use Refund if money needs to be returned.',
+                      : 'Cancel this order and keep the original order record in history. Cancellation does not return a payment; use Refund if money needs to be returned.',
                 ),
                 if (!complete) ...[
                   const SizedBox(height: 12),

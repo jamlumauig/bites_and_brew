@@ -28,41 +28,26 @@
         "*.local"
       ],
       "source": "functions"
-    },
+    }
+  ],
+  "hosting": [
     {
-      "source": "havenandco",
-      "codebase": "havenandco",
-      "disallowLegacyRuntimeConfig": true,
+      "site": "lunan-pos",
+      "public": "build/web",
       "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
       ]
     }
   ],
-  "hosting": {
-    "site": "bites-and-brew-506111",
-    "public": "build/web",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  },
   "storage": {
     "rules": "storage.rules"
-  },
-  "auth": {
-    "providers": {
-      "emailPassword": true
-    }
   }
 }

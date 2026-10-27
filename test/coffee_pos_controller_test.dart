@@ -58,7 +58,7 @@ void main() {
       expect(controller.customers, isEmpty);
       expect(controller.todaySales, 0);
       expect(controller.cart, isEmpty);
-      expect(controller.storeName, 'Haven & Co.');
+      expect(controller.storeName, 'LUNAN');
 
       final reloaded = CoffeePosController(repository: repository);
       await reloaded.initialize();

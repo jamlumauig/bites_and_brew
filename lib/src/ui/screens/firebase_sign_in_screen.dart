@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../state/demo_session_manager.dart';
+
 class FirebaseSignInScreen extends StatefulWidget {
   const FirebaseSignInScreen({super.key});
 
@@ -30,9 +32,16 @@ class _FirebaseSignInScreenState extends State<FirebaseSignInScreen> {
 
     setState(() => _isBusy = true);
     try {
-      final auth = FirebaseAuth.instance;
-      final email = _emailController.text.trim();
+      final email = _emailController.text.trim().toLowerCase();
       final password = _passwordController.text;
+
+      // Direct demo account sign-in (supports demo, demo2, demo@..., etc.)
+      if (!createAccount && email.startsWith('demo')) {
+        await DemoSessionManager.instance.enterDemoMode();
+        return;
+      }
+
+      final auth = FirebaseAuth.instance;
 
       if (createAccount) {
         await auth.createUserWithEmailAndPassword(
@@ -56,7 +65,7 @@ class _FirebaseSignInScreenState extends State<FirebaseSignInScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to authenticate right now.')),
+        const SnackBar(content: Text('Unable to sign in right now. Please try again.')),
       );
     } finally {
       if (mounted) {
@@ -140,7 +149,10 @@ class _FirebaseSignInScreenState extends State<FirebaseSignInScreen> {
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 440),
-                child: Card(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Card(
                   elevation: 0,
                   color: colorScheme.surface.withValues(alpha: 0.94),
                   child: Padding(
@@ -153,7 +165,7 @@ class _FirebaseSignInScreenState extends State<FirebaseSignInScreen> {
                         children: [
                           Center(
                             child: Image.asset(
-                              'assets/haven_logo.png',
+                              'assets/lunan_logo.png',
                               width: 84,
                               height: 84,
                             ),
@@ -161,16 +173,26 @@ class _FirebaseSignInScreenState extends State<FirebaseSignInScreen> {
                           const SizedBox(height: 20),
                           Text(
                             _isCreateAccount
-                                ? 'Create your Haven & Co. account'
-                                : 'Sign in to Haven & Co.',
+                                ? 'Create your LUNAN account'
+                                : 'Sign in to LUNAN',
                             style: theme.textTheme.headlineSmall,
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'May lugar ka rito.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontStyle: FontStyle.italic,
+                              color: const Color(0xFF6B4423),
+                              fontWeight: FontWeight.w600,
+                            ),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 8),
                           Text(
                             _isCreateAccount
-                                ? 'Create a secure account to access the POS from your devices.'
-                                : 'Use your email and password to access the POS and sync data to Firebase.',
+                                ? 'Create a secure account to access your store register.'
+                                : 'Sign in to access your register, menu, and store records.',
                             style: theme.textTheme.bodyMedium,
                             textAlign: TextAlign.center,
                           ),
@@ -184,9 +206,12 @@ class _FirebaseSignInScreenState extends State<FirebaseSignInScreen> {
                               prefixIcon: Icon(Icons.email_outlined),
                             ),
                             validator: (value) {
-                              final text = value?.trim() ?? '';
+                              final text = value?.trim().toLowerCase() ?? '';
                               if (text.isEmpty) {
                                 return 'Enter an email address.';
+                              }
+                              if (text.startsWith('demo')) {
+                                return null;
                               }
                               if (!text.contains('@')) {
                                 return 'Enter a valid email address.';
@@ -216,6 +241,10 @@ class _FirebaseSignInScreenState extends State<FirebaseSignInScreen> {
                               ),
                             ),
                             validator: (value) {
+                              final email = _emailController.text.trim().toLowerCase();
+                              if (email.startsWith('demo')) {
+                                return null;
+                              }
                               if ((value ?? '').length < 6) {
                                 return 'Use at least 6 characters.';
                               }
@@ -258,16 +287,73 @@ class _FirebaseSignInScreenState extends State<FirebaseSignInScreen> {
                               child: const Text('Forgot password?'),
                             ),
                           ],
+                          // const SizedBox(height: 16),
+                          // const Row(
+                          //   children: [
+                          //     Expanded(child: Divider()),
+                          //     Padding(
+                          //       padding: EdgeInsets.symmetric(horizontal: 12),
+                          //       child: Text(
+                          //         'OR',
+                          //         style: TextStyle(
+                          //           fontSize: 12,
+                          //           fontWeight: FontWeight.w600,
+                          //           color: Colors.black45,
+                          //         ),
+                          //       ),
+                          //     ),
+                          //     Expanded(child: Divider()),
+                          //   ],
+                          // ),
+                          // const SizedBox(height: 16),
+                          // FilledButton.tonalIcon(
+                          //   key: const ValueKey('explore_demo_admin_button'),
+                          //   onPressed: _isBusy
+                          //       ? null
+                          //       : () async {
+                          //           setState(() => _isBusy = true);
+                          //           await DemoSessionManager.instance.enterDemoMode();
+                          //           if (mounted) {
+                          //             setState(() => _isBusy = false);
+                          //           }
+                          //         },
+                          //   icon: const Icon(Icons.science_outlined),
+                          //   label: const Text('Explore Demo Admin Mode'),
+                          //   style: FilledButton.styleFrom(
+                          //     padding: const EdgeInsets.symmetric(vertical: 14),
+                          //     backgroundColor: const Color(0xFFF3E5D8),
+                          //     foregroundColor: const Color(0xFF6B4423),
+                          //   ),
+                          // ),
+                          // const SizedBox(height: 6),
+                          // const Text(
+                          //   'Isolated sandbox with realistic sample data. Changes do not affect production.',
+                          //   style: TextStyle(fontSize: 11, color: Colors.black54),
+                          //   textAlign: TextAlign.center,
+                          // ),
                         ],
                       ),
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 18),
+                Text(
+                  'Developed by Jam Lumauig, 2026',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF6B4423).withValues(alpha: 0.8),
+                    letterSpacing: 0.2,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 }

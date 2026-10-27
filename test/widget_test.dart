@@ -7,6 +7,6 @@ void main() {
     await tester.pumpWidget(const CoffeePosApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Firebase is not initialized'), findsOneWidget);
+    expect(find.text('Store Service Offline'), findsOneWidget);
   });
 }

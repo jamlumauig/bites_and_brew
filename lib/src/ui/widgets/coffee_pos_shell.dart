@@ -11,6 +11,7 @@ import 'package:printing/printing.dart';
 import '../../domain/checkout_calculator.dart';
 import '../../domain/coffee_pos_models.dart';
 import '../../state/coffee_pos_controller.dart';
+import '../../state/demo_session_manager.dart';
 import '../../utils/receipt_printer.dart' as receipt_printer;
 import 'admin_dashboard.dart';
 import 'cashier_dashboard.dart';
@@ -66,13 +67,13 @@ class _CoffeePosShellState extends State<CoffeePosShell> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Image.asset(
-                        'assets/haven_logo.png',
+                        'assets/lunan_logo.png',
                         width: 28,
                         height: 28,
                         fit: BoxFit.contain,
                       ),
                       const SizedBox(width: 10),
-                      const Text('Haven & Co.'),
+                      const Text('LUNAN'),
                     ],
                   ),
                   leading: Builder(
@@ -94,20 +95,39 @@ class _CoffeePosShellState extends State<CoffeePosShell> {
                   onLogout: _showLogoutMessage,
                 ),
           body: SafeArea(
-            child: isWide
-                ? Row(
-                    children: [
-                      _PermanentSidebar(
-                        controller: controller,
-                        selectedSection: _section,
-                        onSelect: (section) =>
-                            setState(() => _section = section),
-                        onLogout: _showLogoutMessage,
-                      ),
-                      const VerticalDivider(width: 1),
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.all(compactLandscape ? 12 : 18),
+            child: Column(
+              children: [
+                if (controller.isDemo) _buildDemoBanner(context),
+                Expanded(
+                  child: isWide
+                      ? Row(
+                          children: [
+                            _PermanentSidebar(
+                              controller: controller,
+                              selectedSection: _section,
+                              onSelect: (section) =>
+                                  setState(() => _section = section),
+                              onLogout: _showLogoutMessage,
+                            ),
+                            const VerticalDivider(width: 1),
+                            Expanded(
+                              child: Padding(
+                                padding: EdgeInsets.all(compactLandscape ? 12 : 18),
+                                child: _SectionHost(
+                                  section: _section,
+                                  controller: controller,
+                                  compactLandscape: compactLandscape,
+                                  onNavigate: (section) =>
+                                      setState(() => _section = section),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Padding(
+                          padding: EdgeInsets.all(
+                            _section == _ShellSection.cashier ? 8 : 16,
+                          ),
                           child: _SectionHost(
                             section: _section,
                             controller: controller,
@@ -116,29 +136,132 @@ class _CoffeePosShellState extends State<CoffeePosShell> {
                                 setState(() => _section = section),
                           ),
                         ),
-                      ),
-                    ],
-                  )
-                : Padding(
-                    padding: EdgeInsets.all(
-                      _section == _ShellSection.cashier ? 8 : 16,
-                    ),
-                    child: _SectionHost(
-                      section: _section,
-                      controller: controller,
-                      compactLandscape: compactLandscape,
-                      onNavigate: (section) =>
-                          setState(() => _section = section),
-                    ),
-                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
+  Widget _buildDemoBanner(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3CD),
+        border: Border(
+          bottom: BorderSide(color: const Color(0xFFFFEEBA).withValues(alpha: 0.8)),
+        ),
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 6,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF856404),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  'DEMO MODE',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Demo store environment. Changes do not affect your live business records.',
+                style: TextStyle(
+                  color: Color(0xFF856404),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton.icon(
+                key: const ValueKey('reset_demo_data_header_button'),
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Reset Demo Data?'),
+                      content: const Text(
+                        'This will restore all demo menu items, customization options, stock counts, and sample orders to their original state.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.of(ctx).pop(true),
+                          child: const Text('Reset Demo Data'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true) {
+                    await controller.resetDemoData();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Demo store data has been reset to original sample records.'),
+                        ),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Reset Demo Data'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF856404),
+                  side: const BorderSide(color: Color(0xFF856404)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                key: const ValueKey('exit_demo_mode_button'),
+                onPressed: _showLogoutMessage,
+                icon: const Icon(Icons.exit_to_app, size: 16),
+                label: const Text('Exit Demo'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF856404),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showLogoutMessage() async {
     await controller.flushPersistence();
+    if (controller.isDemo) {
+      await DemoSessionManager.instance.exitDemoMode();
+      return;
+    }
     await FirebaseAuth.instance.signOut();
   }
 }
@@ -342,15 +465,15 @@ class _PermanentSidebar extends StatelessWidget {
                       ),
                       padding: const EdgeInsets.all(4),
                       child: Image.asset(
-                        'assets/haven_logo.png',
+                        'assets/lunan_logo.png',
                         fit: BoxFit.contain,
                       ),
                     ),
                     SizedBox(height: veryDense ? 4 : 6),
                     Text(
-                      'Haven & Co.',
+                      'LUNAN',
                       textAlign: TextAlign.center,
-                      maxLines: 2,
+                      maxLines: 1,
                       style: TextStyle(
                         fontSize: brandFont,
                         height: 1.0,
@@ -358,6 +481,21 @@ class _PermanentSidebar extends StatelessWidget {
                         color: const Color(0xFF2F251E),
                       ),
                     ),
+                    if (!veryDense) ...[
+                      const SizedBox(height: 2),
+                      const Text(
+                        'May lugar ka rito.',
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF6B4423),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -393,9 +531,13 @@ class _PermanentSidebar extends StatelessWidget {
                   veryDense ? 8 : 12,
                 ),
                 child: _SidebarNavTile(
-                  label: 'Logout',
-                  icon: Icons.logout_outlined,
-                  selectedIcon: Icons.logout,
+                  label: controller.isDemo ? 'Exit Demo' : 'Logout',
+                  icon: controller.isDemo
+                      ? Icons.exit_to_app_outlined
+                      : Icons.logout_outlined,
+                  selectedIcon: controller.isDemo
+                      ? Icons.exit_to_app
+                      : Icons.logout,
                   selected: false,
                   isAction: true,
                   compact: veryDense || dense,
@@ -451,19 +593,34 @@ class _ShellDrawer extends StatelessWidget {
                       ),
                       padding: const EdgeInsets.all(4),
                       child: Image.asset(
-                        'assets/haven_logo.png',
+                        'assets/lunan_logo.png',
                         fit: BoxFit.contain,
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Haven & Co.',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF2F251E),
-                        ),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'LUNAN',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF2F251E),
+                            ),
+                          ),
+                          Text(
+                            'May lugar ka rito.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF6B4423),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -486,8 +643,12 @@ class _ShellDrawer extends StatelessWidget {
               ),
             const Divider(height: 32),
             ListTile(
-              leading: const Icon(Icons.logout_outlined),
-              title: const Text('Logout'),
+              leading: Icon(
+                controller.isDemo
+                    ? Icons.exit_to_app_outlined
+                    : Icons.logout_outlined,
+              ),
+              title: Text(controller.isDemo ? 'Exit Demo' : 'Logout'),
               onTap: onLogout,
             ),
           ],
@@ -887,8 +1048,8 @@ class _InProgressOrdersPage extends StatelessWidget {
                         } else {
                           showAutoHidingSnackBar(
                             messenger: messenger,
-                            content: Text(
-                              'Print ticket failed: ${result.message ?? "Unknown error"}',
+                            content: const Text(
+                              'Unable to print preparation ticket. Please check the printer connection.',
                             ),
                             duration: const Duration(seconds: 5),
                           );
@@ -959,7 +1120,7 @@ class _OrderHistoryPageState extends State<_OrderHistoryPage> {
       children: [
         _PageHeader(
           title: 'Orders / Order History',
-          subtitle: 'Search receipts and review completed transactions.',
+          subtitle: 'Search receipts and review completed orders.',
           compactLandscape: widget.compactLandscape,
           trailing: _CountPill(count: orders.length, label: 'orders'),
         ),
@@ -1449,7 +1610,7 @@ class _SettingsPage extends StatelessWidget {
                 _SettingsTile(
                   icon: Icons.upload_file_outlined,
                   title: 'Upload Menu',
-                  subtitle: 'Import products and categories from Excel.',
+                  subtitle: 'Upload products and categories from a spreadsheet.',
                   onTap: () => importProductsExcel(context, controller),
                 ),
                 _SettingsTile(
@@ -1508,15 +1669,20 @@ class _SettingsPage extends StatelessWidget {
                   icon: Icons.manage_accounts_outlined,
                   title: 'Account',
                   subtitle:
-                      '${controller.cashierName} · ${controller.role == Role.admin ? 'Admin' : 'User'}',
+                      '${controller.cashierName} · ${controller.role == Role.admin ? 'Administrator' : 'Staff'}',
                   onTap: () => _editAccountSettings(context, controller),
                 ),
                 if (controller.role == Role.admin)
                   _SettingsTile(
                     icon: Icons.admin_panel_settings_outlined,
-                    title: 'User Access',
-                    subtitle: 'Promote or limit user accounts.',
-                    onTap: () => _manageUserAccess(context),
+                    title: 'Staff Permissions',
+                    subtitle: controller.isDemo
+                        ? 'Disabled in Demo Mode.'
+                        : 'Manage staff and manager accounts.',
+                    onTap: () => _manageUserAccess(
+                      context,
+                      isDemo: controller.isDemo,
+                    ),
                   ),
                 _SettingsTile(
                   icon: Icons.palette_outlined,
@@ -1530,14 +1696,14 @@ class _SettingsPage extends StatelessWidget {
                   icon: Icons.restart_alt_outlined,
                   title: 'Restore Demo Data',
                   subtitle:
-                      'Clear the saved reset snapshot and reload the demo menu.',
+                      'Reset store to original sample menu, inventory, and orders.',
                   onTap: () => _confirmRestoreDemoData(context, controller),
                 ),
                 _SettingsTile(
                   icon: Icons.delete_forever_outlined,
                   title: 'Delete All Data',
                   subtitle:
-                      'Keep products, wipe everything else, and save that state.',
+                      'Keep menu products and clear past orders, inventory, and sales records.',
                   onTap: () => _confirmDeleteAllData(context, controller),
                   danger: true,
                 ),
@@ -1703,7 +1869,7 @@ Future<void> _editTaxSettings(
                       subtitle: Text(
                         vatEnabled
                             ? 'Enabled - Tax is computed and printed on receipts'
-                            : 'Disabled - Non-VAT transactions; no tax line on receipts',
+                            : 'Disabled - Non-VAT store orders; no tax line on receipts',
                         style: const TextStyle(fontSize: 12),
                       ),
                       value: vatEnabled,
@@ -2038,7 +2204,7 @@ Future<void> _editPrinterSettings(
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
                           kIsWeb
-                              ? 'Native macOS app prints directly to GEZHI_micro_printer via CUPS with zero prompts.\nIn Chrome browser, direct silent printing requires Chrome Kiosk Mode (--kiosk-printing) or a local bridge daemon.'
+                              ? 'Sends receipts directly to your receipt printer without showing a print dialog.\n(For browser kiosk mode or background printing).'
                               : 'Sends receipts directly to your connected thermal printer silently with zero print dialog prompts.',
                           style: TextStyle(
                             color: kIsWeb
@@ -2053,10 +2219,10 @@ Future<void> _editPrinterSettings(
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
                           title: const Text(
-                            'Chrome Kiosk Mode (--kiosk-printing)',
+                            'Kiosk Mode (Silent Printing)',
                           ),
                           subtitle: const Text(
-                            'Enable if Chrome is running with --kiosk-printing for silent browser printing.',
+                            'Enable if your browser is running in kiosk mode for silent receipt printing.',
                             style: TextStyle(fontSize: 11),
                           ),
                           value: webKioskPrinting,
@@ -2068,7 +2234,7 @@ Future<void> _editPrinterSettings(
                       TextFormField(
                         initialValue: selectedPrinterUrl,
                         decoration: const InputDecoration(
-                          labelText: 'Printer IP address : Port',
+                          labelText: 'Printer network address (IP : Port)',
                           hintText: '192.168.1.100:9100',
                         ),
                         onChanged: (val) =>
@@ -2077,7 +2243,7 @@ Future<void> _editPrinterSettings(
                       const Padding(
                         padding: EdgeInsets.only(top: 6),
                         child: Text(
-                          'Transmits raw ESC/POS commands directly to an 80mm thermal printer (e.g. Officom 80mm) over your local Wi-Fi or Ethernet network. Default port is 9100.',
+                          'Sends receipts directly to your network thermal receipt printer over Wi-Fi or local network cable.',
                           style: TextStyle(
                             color: Color(0xFF6B4423),
                             fontSize: 12,
@@ -2090,7 +2256,7 @@ Future<void> _editPrinterSettings(
                       const Padding(
                         padding: EdgeInsets.only(top: 8),
                         child: Text(
-                          'When a receipt is printed, Android will open its share sheet. Select RawBT, PrinterShare, or your printer manufacturer app to send it to your Bluetooth, USB, or Wi-Fi thermal printer.',
+                          'When printing, your device will let you select your receipt printer app (Bluetooth, USB, or Wi-Fi).',
                           style: TextStyle(
                             color: Color(0xFF6B4423),
                             fontSize: 12,
@@ -2380,7 +2546,37 @@ Future<void> _editAccountSettings(
   );
 }
 
-Future<void> _manageUserAccess(BuildContext context) {
+Future<void> _manageUserAccess(BuildContext context, {bool isDemo = false}) {
+  if (isDemo) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.shield_outlined, color: Color(0xFFC48B28)),
+              SizedBox(width: 8),
+              Text('Staff Permissions (Demo)'),
+            ],
+          ),
+          content: const Text(
+            'Staff permissions cannot be modified in Demo Mode.\n\n'
+            'Staff roles and account permissions can only be managed from your live store owner account.',
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFC48B28),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Understood'),
+            ),
+          ],
+        );
+      },
+    );
+  }
   return showDialog<void>(
     context: context,
     builder: (_) => const _UserAccessDialog(),
@@ -2448,7 +2644,7 @@ class _UserAccessDialogState extends State<_UserAccessDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('User Access'),
+      title: const Text('Staff Permissions'),
       content: SizedBox(
         width: 520,
         child: FutureBuilder<List<_ManagedUser>>(
@@ -2461,7 +2657,7 @@ class _UserAccessDialogState extends State<_UserAccessDialog> {
               );
             }
             if (snapshot.hasError) {
-              return const Text('Unable to load user accounts.');
+              return const Text('Unable to load staff accounts.');
             }
             final users = snapshot.data ?? const <_ManagedUser>[];
             return ConstrainedBox(
@@ -2476,7 +2672,7 @@ class _UserAccessDialogState extends State<_UserAccessDialog> {
                   return ListTile(
                     title: Text(user.email),
                     subtitle: Text(
-                      user.role == 'admin' ? 'Administrator' : 'User',
+                      user.role == 'admin' ? 'Administrator' : 'Staff / Cashier',
                     ),
                     trailing: DropdownButton<String>(
                       value: user.role,
@@ -2488,8 +2684,8 @@ class _UserAccessDialogState extends State<_UserAccessDialog> {
                               }
                             },
                       items: const [
-                        DropdownMenuItem(value: 'user', child: Text('User')),
-                        DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                        DropdownMenuItem(value: 'user', child: Text('Staff / Cashier')),
+                        DropdownMenuItem(value: 'admin', child: Text('Administrator')),
                       ],
                     ),
                   );
@@ -2576,13 +2772,16 @@ Future<void> _confirmRestoreDemoData(
   BuildContext context,
   CoffeePosController controller,
 ) async {
+  final isDemo = controller.isDemo;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) {
       return AlertDialog(
-        title: const Text('Restore demo data?'),
-        content: const Text(
-          'This will clear the saved reset snapshot and reload the demo menu, orders, inventory, and settings.',
+        title: Text(isDemo ? 'Reset Demo Data?' : 'Restore Sample Data?'),
+        content: Text(
+          isDemo
+              ? 'This will reset demo store records to original sample items, orders, and stock. Real store data is completely untouched.'
+              : 'This will reload the initial sample menu, orders, inventory, and settings.',
         ),
         actions: [
           TextButton(
@@ -2595,7 +2794,7 @@ Future<void> _confirmRestoreDemoData(
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Restore'),
+            child: Text(isDemo ? 'Reset' : 'Restore'),
           ),
         ],
       );
@@ -2605,7 +2804,13 @@ Future<void> _confirmRestoreDemoData(
     await controller.restoreDemoData();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Demo data has been restored.')),
+        SnackBar(
+          content: Text(
+            isDemo
+                ? 'Demo store records have been reset to original sample data.'
+                : 'Sample store data has been restored.',
+          ),
+        ),
       );
     }
   }
@@ -2615,13 +2820,16 @@ Future<void> _confirmDeleteAllData(
   BuildContext context,
   CoffeePosController controller,
 ) async {
+  final isDemo = controller.isDemo;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) {
       return AlertDialog(
-        title: const Text('Delete all data?'),
-        content: const Text(
-          'This will keep the current products, remove orders, inventory, customers, shifts, sales history, and settings, and save that cleared state so restart stays clean.',
+        title: Text(isDemo ? 'Delete Demo Data?' : 'Delete All Data?'),
+        content: Text(
+          isDemo
+              ? 'This will keep demo menu products and clear all demo orders, inventory, and activity. Real store data is completely unaffected.'
+              : 'This will keep your current menu products and clear past orders, inventory, customers, shifts, and sales records.',
         ),
         actions: [
           TextButton(
@@ -2644,7 +2852,13 @@ Future<void> _confirmDeleteAllData(
     await controller.deleteAllData();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('All non-product data has been deleted.')),
+        SnackBar(
+          content: Text(
+            isDemo
+                ? 'Demo orders and records have been cleared.'
+                : 'Past orders, inventory, and sales records have been cleared.',
+          ),
+        ),
       );
     }
   }
@@ -3266,16 +3480,16 @@ class _HistoryOrderCardState extends State<_HistoryOrderCard> {
                                   final String msg;
                                   if (printResult.status ==
                                       receipt_printer.PrintStatus.submittedToDialog) {
-                                    msg = 'Print dialog opened for ${order.id}';
+                                    msg = 'Print window opened for ${order.id}';
                                   } else if (printResult.isSuccess) {
-                                    msg = 'Receipt sent for ${order.id}';
+                                    msg = 'Receipt printed for ${order.id}';
                                   } else if (printResult.status ==
                                       receipt_printer.PrintStatus.unknown) {
                                     msg =
-                                        'Print status unknown. Check printer before reprinting.';
+                                        'Print status unknown. Please check your printer before reprinting.';
                                   } else if (printResult.status ==
                                       receipt_printer.PrintStatus.canceled) {
-                                    msg = 'Print cancelled.';
+                                    msg = 'Print canceled.';
                                   } else {
                                     msg =
                                         'Unable to print receipt. Please check the printer connection.';

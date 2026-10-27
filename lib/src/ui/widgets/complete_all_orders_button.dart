@@ -48,7 +48,7 @@ class _CompleteAllOrdersButtonState extends State<CompleteAllOrdersButton> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Mark ${orders.length} paid orders as completed? Their transactions and completion details will remain in history.',
+                            'Mark ${orders.length} paid orders as completed? Their order records and payment history will remain saved.',
                           ),
                           if (widget.unpaidCount > 0) ...[
                             const SizedBox(height: 8),

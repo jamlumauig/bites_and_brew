@@ -69,7 +69,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       // Brand in sidebar
-      expect(find.text('HAVEN & CO.'), findsOneWidget);
+      expect(find.text('LUNAN'), findsOneWidget);
       expect(find.text('Back Office'), findsOneWidget);
 
       // Sidebar navigation items (with both icon and text)
@@ -122,8 +122,8 @@ void main() {
       // Products header and toolbar
       expect(find.text('Manage catalog items, pricing, and availability'), findsOneWidget);
       expect(find.text('Add Product'), findsOneWidget);
-      expect(find.text('Import Excel'), findsOneWidget);
-      expect(find.text('Export Excel'), findsOneWidget);
+      expect(find.text('Upload Menu'), findsOneWidget);
+      expect(find.text('Download Menu'), findsOneWidget);
       expect(find.text('Search products...'), findsOneWidget);
 
       // 2. Click Inventory tab in sidebar
@@ -142,7 +142,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       // Orders header and toolbar
-      expect(find.text('Transaction history, audit trail, and customer receipts'), findsOneWidget);
+      expect(find.text('Order history, activity logs, and customer receipts'), findsOneWidget);
       expect(find.text('Search order #, cashier...'), findsOneWidget);
     });
 
@@ -232,7 +232,7 @@ void main() {
       expect(find.text('Print Receipt'), findsNothing);
     });
 
-    testWidgets('Mobile view renders horizontal navigation chips and avoids overflow', (tester) async {
+    testWidgets('Mobile view renders vertical sidebar and avoids overflow', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -265,6 +265,49 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('Manage catalog items, pricing, and availability'), findsOneWidget);
+    });
+
+    testWidgets('Customizations tab renders stacked responsive layout on mobile without RenderFlex overflow', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final controller = createTestController();
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminDashboard(controller: controller),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Click Customizations tab in mobile sidebar
+      await tester.tap(find.text('Customizations').first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Verify header and page content
+      expect(find.text('Dynamic modifier groups, add-ons, sizes, and menu options'), findsOneWidget);
+      expect(find.text('Add Group'), findsWidgets);
+
+      // Verify groups are present and not squashed
+      expect(find.text('Drink size'), findsOneWidget);
+      expect(find.text('Snack size'), findsOneWidget);
+
+      // Verify actions exist
+      expect(find.byIcon(Icons.edit_outlined), findsWidgets);
+      expect(find.byIcon(Icons.delete_outline_rounded), findsWidgets);
+      expect(find.byType(Switch), findsWidgets);
+
+      // Verify zero overflow
+      expect(tester.takeException(), isNull);
     });
   });
 }

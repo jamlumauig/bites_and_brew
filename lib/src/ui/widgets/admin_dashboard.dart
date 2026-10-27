@@ -110,34 +110,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
       builder: (context, constraints) {
         final isDesktop = constraints.maxWidth >= 768;
 
-        if (isDesktop) {
-          return Scaffold(
-            backgroundColor: const Color(0xFFFAF7F2),
-            body: Row(
-              children: [
-                _AdminSidebar(
-                  activeSection: _section,
-                  onSelectSection: (section) => setState(() => _section = section),
-                  controller: controller,
-                ),
-                const VerticalDivider(width: 1, thickness: 1, color: Color(0xFFEFE6DC)),
-                Expanded(
-                  child: _buildSectionContent(),
-                ),
-              ],
-            ),
-          );
-        }
-
         return Scaffold(
           backgroundColor: const Color(0xFFFAF7F2),
-          body: Column(
+          body: Row(
             children: [
-              _AdminMobileNav(
+              _AdminSidebar(
                 activeSection: _section,
                 onSelectSection: (section) => setState(() => _section = section),
+                controller: controller,
+                isMobile: !isDesktop,
               ),
-              const Divider(height: 1, thickness: 1, color: Color(0xFFEFE6DC)),
+              const VerticalDivider(width: 1, thickness: 1, color: Color(0xFFEFE6DC)),
               Expanded(
                 child: _buildSectionContent(),
               ),
@@ -164,27 +147,32 @@ class _AdminSidebar extends StatelessWidget {
     required this.activeSection,
     required this.onSelectSection,
     required this.controller,
+    this.isMobile = false,
   });
 
   final _AdminSection activeSection;
   final ValueChanged<_AdminSection> onSelectSection;
   final CoffeePosController controller;
+  final bool isMobile;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 210,
+      width: isMobile ? 76 : 210,
       color: const Color(0xFFFFFDFB),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 4 : 12,
+        vertical: isMobile ? 10 : 16,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Logo & Store Title
-          Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
+          if (isMobile) ...[
+            Center(
+              child: Container(
+                width: 34,
+                height: 34,
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFE8D2),
                   borderRadius: BorderRadius.circular(10),
@@ -193,130 +181,315 @@ class _AdminSidebar extends StatelessWidget {
                 child: const Icon(
                   Icons.coffee_rounded,
                   color: Color(0xFF6B4423),
-                  size: 22,
+                  size: 19,
                 ),
               ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'HAVEN & CO.',
+            ),
+            const SizedBox(height: 5),
+            Center(
+              child: controller.isDemo
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF856404),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'DEMO',
+                        style: TextStyle(
+                          fontSize: 8,
+                          letterSpacing: 1.0,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    )
+                  : const Text(
+                      'ADMIN',
                       style: TextStyle(
-                        fontSize: 13.5,
+                        fontSize: 9,
+                        letterSpacing: 1.5,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                        color: Color(0xFF4A2C11),
+                        color: Color(0xFF9E8D81),
                       ),
                     ),
-                    Text(
-                      'Back Office',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF8C7564),
+            ),
+            const SizedBox(height: 10),
+            const Divider(height: 1, thickness: 1, color: Color(0xFFEFE6DC)),
+            const SizedBox(height: 8),
+          ] else ...[
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFE8D2),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFF8F4F).withValues(alpha: 0.3)),
+                  ),
+                  child: const Icon(
+                    Icons.coffee_rounded,
+                    color: Color(0xFF6B4423),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'LUNAN',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                          color: Color(0xFF4A2C11),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Divider(height: 1, thickness: 1, color: Color(0xFFEFE6DC)),
-          const SizedBox(height: 14),
-
-          // Nav Items
-          _SidebarItem(
-            icon: Icons.dashboard_outlined,
-            activeIcon: Icons.dashboard_rounded,
-            label: 'Overview',
-            isActive: activeSection == _AdminSection.overview,
-            onTap: () => onSelectSection(_AdminSection.overview),
-          ),
-          const SizedBox(height: 4),
-          _SidebarItem(
-            icon: Icons.coffee_outlined,
-            activeIcon: Icons.coffee_rounded,
-            label: 'Products',
-            isActive: activeSection == _AdminSection.products,
-            onTap: () => onSelectSection(_AdminSection.products),
-          ),
-          const SizedBox(height: 4),
-          _SidebarItem(
-            icon: Icons.tune_outlined,
-            activeIcon: Icons.tune_rounded,
-            label: 'Customizations',
-            isActive: activeSection == _AdminSection.customizations,
-            onTap: () => onSelectSection(_AdminSection.customizations),
-          ),
-          const SizedBox(height: 4),
-          _SidebarItem(
-            icon: Icons.warehouse_outlined,
-            activeIcon: Icons.warehouse_rounded,
-            label: 'Inventory',
-            isActive: activeSection == _AdminSection.inventory,
-            onTap: () => onSelectSection(_AdminSection.inventory),
-          ),
-          const SizedBox(height: 4),
-          _SidebarItem(
-            icon: Icons.receipt_long_outlined,
-            activeIcon: Icons.receipt_long_rounded,
-            label: 'Orders',
-            isActive: activeSection == _AdminSection.orders,
-            onTap: () => onSelectSection(_AdminSection.orders),
-          ),
-
-          const Spacer(),
-          const Divider(height: 1, thickness: 1, color: Color(0xFFEFE6DC)),
-          const SizedBox(height: 10),
-
-          // Store Backup & Info
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _exportToFile(context, controller),
-                  icon: const Icon(Icons.download_rounded, size: 14),
-                  label: const Text('Backup'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF6B4423),
-                    side: const BorderSide(color: Color(0xFFE0D4C5)),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      if (controller.isDemo)
+                        Container(
+                          margin: const EdgeInsets.only(top: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3CD),
+                            border: Border.all(color: const Color(0xFFFFEEBA)),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'DEMO ADMIN',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF856404),
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                        )
+                      else
+                        const Text(
+                          'Back Office',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF8C7564),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _importFromFile(context, controller),
-                  icon: const Icon(Icons.upload_rounded, size: 14),
-                  label: const Text('Restore'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF6B4423),
-                    side: const BorderSide(color: Color(0xFFE0D4C5)),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Divider(height: 1, thickness: 1, color: Color(0xFFEFE6DC)),
+            const SizedBox(height: 14),
+          ],
+
+          // Independently scrollable nav rail items
+          Expanded(
+            child: Scrollbar(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  _SidebarItem(
+                    icon: Icons.dashboard_outlined,
+                    activeIcon: Icons.dashboard_rounded,
+                    label: 'Overview',
+                    isActive: activeSection == _AdminSection.overview,
+                    onTap: () => onSelectSection(_AdminSection.overview),
+                    isMobile: isMobile,
                   ),
-                ),
+                  SizedBox(height: isMobile ? 6 : 4),
+                  _SidebarItem(
+                    icon: Icons.coffee_outlined,
+                    activeIcon: Icons.coffee_rounded,
+                    label: 'Products',
+                    isActive: activeSection == _AdminSection.products,
+                    onTap: () => onSelectSection(_AdminSection.products),
+                    isMobile: isMobile,
+                  ),
+                  SizedBox(height: isMobile ? 6 : 4),
+                  _SidebarItem(
+                    icon: Icons.tune_outlined,
+                    activeIcon: Icons.tune_rounded,
+                    label: 'Customizations',
+                    isActive: activeSection == _AdminSection.customizations,
+                    onTap: () => onSelectSection(_AdminSection.customizations),
+                    isMobile: isMobile,
+                  ),
+                  SizedBox(height: isMobile ? 6 : 4),
+                  _SidebarItem(
+                    icon: Icons.warehouse_outlined,
+                    activeIcon: Icons.warehouse_rounded,
+                    label: 'Inventory',
+                    isActive: activeSection == _AdminSection.inventory,
+                    onTap: () => onSelectSection(_AdminSection.inventory),
+                    isMobile: isMobile,
+                  ),
+                  SizedBox(height: isMobile ? 6 : 4),
+                  _SidebarItem(
+                    icon: Icons.receipt_long_outlined,
+                    activeIcon: Icons.receipt_long_rounded,
+                    label: 'Orders',
+                    isActive: activeSection == _AdminSection.orders,
+                    onTap: () => onSelectSection(_AdminSection.orders),
+                    isMobile: isMobile,
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Center(
-            child: Text(
-              '${controller.storeName} • Admin',
-              style: const TextStyle(fontSize: 10.5, color: Color(0xFF9E8D81)),
-              overflow: TextOverflow.ellipsis,
             ),
           ),
+
+          const Divider(height: 1, thickness: 1, color: Color(0xFFEFE6DC)),
+          const SizedBox(height: 8),
+
+          // Store Backup & Info
+          if (isMobile) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Tooltip(
+                  message: 'Backup Store Data',
+                  child: InkWell(
+                    onTap: () => _exportToFile(context, controller),
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Padding(
+                      padding: EdgeInsets.all(6),
+                      child: Icon(Icons.download_rounded, size: 18, color: Color(0xFF6B4423)),
+                    ),
+                  ),
+                ),
+                Tooltip(
+                  message: 'Restore Store Data',
+                  child: InkWell(
+                    onTap: () => _importFromFile(context, controller),
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Padding(
+                      padding: EdgeInsets.all(6),
+                      child: Icon(Icons.upload_rounded, size: 18, color: Color(0xFF6B4423)),
+                    ),
+                  ),
+                ),
+                if (controller.isDemo)
+                  Tooltip(
+                    message: 'Reset Demo Data',
+                    child: InkWell(
+                      onTap: () => _showResetDemoDialog(context, controller),
+                      borderRadius: BorderRadius.circular(8),
+                      child: const Padding(
+                        padding: EdgeInsets.all(6),
+                        child: Icon(Icons.restore_rounded, size: 18, color: Color(0xFF856404)),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _exportToFile(context, controller),
+                    icon: const Icon(Icons.download_rounded, size: 14),
+                    label: const Text('Backup'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF6B4423),
+                      side: const BorderSide(color: Color(0xFFE0D4C5)),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _importFromFile(context, controller),
+                    icon: const Icon(Icons.upload_rounded, size: 14),
+                    label: const Text('Restore'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF6B4423),
+                      side: const BorderSide(color: Color(0xFFE0D4C5)),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (controller.isDemo) ...[
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showResetDemoDialog(context, controller),
+                  icon: const Icon(Icons.restore_rounded, size: 14),
+                  label: const Text('Reset Demo Data'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF856404),
+                    side: const BorderSide(color: Color(0xFFFFEEBA)),
+                    backgroundColor: const Color(0xFFFFF3CD),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                    textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                controller.isDemo
+                    ? '${controller.storeName} • Demo Mode'
+                    : '${controller.storeName} • Admin',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: controller.isDemo ? FontWeight.w700 : FontWeight.normal,
+                  color: controller.isDemo ? const Color(0xFF856404) : const Color(0xFF9E8D81),
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+}
+
+Future<void> _showResetDemoDialog(
+  BuildContext context,
+  CoffeePosController controller,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Reset Demo Data?'),
+      content: const Text(
+        'This will restore all demo products, categories, modifiers, inventory, and sample orders to their original demo state.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: const Text('Reset Demo Data'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true) {
+    await controller.resetDemoData();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Demo data has been reset to original sample state.')),
+      );
+    }
   }
 }
 
@@ -327,6 +500,7 @@ class _SidebarItem extends StatelessWidget {
     required this.label,
     required this.isActive,
     required this.onTap,
+    this.isMobile = false,
   });
 
   final IconData icon;
@@ -334,9 +508,55 @@ class _SidebarItem extends StatelessWidget {
   final String label;
   final bool isActive;
   final VoidCallback onTap;
+  final bool isMobile;
 
   @override
   Widget build(BuildContext context) {
+    if (isMobile) {
+      const coral = Color(0xFFE96755);
+      return Semantics(
+        selected: isActive,
+        button: true,
+        child: Tooltip(
+          message: label,
+          child: Material(
+            color: isActive ? coral : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isActive ? activeIcon : icon,
+                      size: 20,
+                      color: isActive ? Colors.white : const Color(0xFF7A6A5E),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        height: 1.15,
+                        fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                        color: isActive ? Colors.white : const Color(0xFF3E3027),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Material(
       color: isActive ? const Color(0xFFFFE8D2) : Colors.transparent,
       borderRadius: BorderRadius.circular(10),
@@ -376,107 +596,6 @@ class _SidebarItem extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _AdminMobileNav extends StatelessWidget {
-  const _AdminMobileNav({
-    required this.activeSection,
-    required this.onSelectSection,
-  });
-
-  final _AdminSection activeSection;
-  final ValueChanged<_AdminSection> onSelectSection;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFFFFDFB),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _MobileNavChip(
-              icon: Icons.dashboard_rounded,
-              label: 'Overview',
-              isActive: activeSection == _AdminSection.overview,
-              onTap: () => onSelectSection(_AdminSection.overview),
-            ),
-            const SizedBox(width: 6),
-            _MobileNavChip(
-              icon: Icons.coffee_rounded,
-              label: 'Products',
-              isActive: activeSection == _AdminSection.products,
-              onTap: () => onSelectSection(_AdminSection.products),
-            ),
-            const SizedBox(width: 6),
-            _MobileNavChip(
-              icon: Icons.tune_rounded,
-              label: 'Customizations',
-              isActive: activeSection == _AdminSection.customizations,
-              onTap: () => onSelectSection(_AdminSection.customizations),
-            ),
-            const SizedBox(width: 6),
-            _MobileNavChip(
-              icon: Icons.warehouse_rounded,
-              label: 'Inventory',
-              isActive: activeSection == _AdminSection.inventory,
-              onTap: () => onSelectSection(_AdminSection.inventory),
-            ),
-            const SizedBox(width: 6),
-            _MobileNavChip(
-              icon: Icons.receipt_long_rounded,
-              label: 'Orders',
-              isActive: activeSection == _AdminSection.orders,
-              onTap: () => onSelectSection(_AdminSection.orders),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MobileNavChip extends StatelessWidget {
-  const _MobileNavChip({
-    required this.icon,
-    required this.label,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ChoiceChip(
-      selected: isActive,
-      onSelected: (_) => onTap(),
-      avatar: Icon(
-        icon,
-        size: 16,
-        color: isActive ? const Color(0xFF6B4423) : const Color(0xFF7A6A5E),
-      ),
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-          color: isActive ? const Color(0xFF6B4423) : const Color(0xFF4A3B32),
-        ),
-      ),
-      selectedColor: const Color(0xFFFFE8D2),
-      backgroundColor: const Color(0xFFF9F5F0),
-      side: BorderSide(
-        color: isActive ? const Color(0xFFFF8F4F).withValues(alpha: 0.35) : const Color(0xFFEFE6DC),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      visualDensity: VisualDensity.compact,
     );
   }
 }
@@ -627,12 +746,15 @@ class _AdminDateRangeSelector extends StatelessWidget {
           children: [
             const Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFF6B4423)),
             const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF4A3B32),
+            Flexible(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF4A3B32),
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             const SizedBox(width: 4),
@@ -710,123 +832,173 @@ class _AdminOverviewViewState extends State<_AdminOverviewView> {
         .where((item) => item.severity != InventorySeverity.good)
         .length;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _AdminPageHeader(
-            title: 'Overview',
-            subtitle: 'Store performance, analytics, and sales breakdown',
-            trailing: _AdminDateRangeSelector(
-              preset: _preset,
-              customRange: _customRange,
-              onPresetSelected: (preset) => setState(() {
-                _preset = preset;
-                _customRange = null;
-              }),
-              onCustomRangeSelected: (range) => setState(() {
-                _preset = _AdminDatePreset.custom;
-                _customRange = range;
-              }),
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 650;
+        return SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: isNarrow ? 10 : 16,
+            vertical: isNarrow ? 10 : 16,
           ),
-          const SizedBox(height: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _AdminPageHeader(
+                title: 'Overview',
+                subtitle: 'Store performance, analytics, and sales breakdown',
+                trailing: _AdminDateRangeSelector(
+                  preset: _preset,
+                  customRange: _customRange,
+                  onPresetSelected: (preset) => setState(() {
+                    _preset = preset;
+                    _customRange = null;
+                  }),
+                  onCustomRangeSelected: (range) => setState(() {
+                    _preset = _AdminDatePreset.custom;
+                    _customRange = range;
+                  }),
+                ),
+              ),
+              const SizedBox(height: 14),
 
-          // KPI Cards
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 900;
-              final crossAxisCount = isWide ? 4 : 2;
-              final width = (constraints.maxWidth - (crossAxisCount - 1) * 10) / crossAxisCount;
+              if (controller.isDemo) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3CD),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFFEEBA)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Color(0xFF856404), size: 20),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'You are in Demo Admin Mode. All metrics, products, and orders are sample business records.',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFF856404),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        key: const ValueKey('reset_demo_data_overview_btn'),
+                        onPressed: () => _showResetDemoDialog(context, controller),
+                        icon: const Icon(Icons.refresh_rounded, size: 14),
+                        label: const Text('Reset Demo Data', style: TextStyle(fontSize: 11)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF856404),
+                          side: const BorderSide(color: Color(0xFF856404)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
 
-              return Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  SizedBox(
-                    width: width,
-                    child: _KpiCard(
-                      label: 'Total Sales',
-                      value: _money(totalSales),
-                      icon: Icons.payments_rounded,
-                      color: const Color(0xFF3B7D52),
-                      fillColor: const Color(0xFFE8F5E9),
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _KpiCard(
-                      label: 'Total Orders',
-                      value: '$totalOrders',
-                      icon: Icons.receipt_long_rounded,
-                      color: const Color(0xFF6B4423),
-                      fillColor: const Color(0xFFFFE8D2),
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _KpiCard(
-                      label: 'Average Order',
-                      value: _money(avgOrder),
-                      icon: Icons.point_of_sale_rounded,
-                      color: const Color(0xFF2E6B9E),
-                      fillColor: const Color(0xFFE1F0FA),
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _KpiCard(
-                      label: 'Low Stock Items',
-                      value: '$lowStockCount',
-                      icon: Icons.warning_amber_rounded,
-                      color: lowStockCount > 0 ? const Color(0xFFC62828) : const Color(0xFF3B7D52),
-                      fillColor: lowStockCount > 0 ? const Color(0xFFFFEBEE) : const Color(0xFFE8F5E9),
-                    ),
-                  ),
-                ],
-              );
-            },
+              // KPI Cards (2 columns on mobile/tablet, 4 columns on wide screens)
+              LayoutBuilder(
+                builder: (context, kpiConstraints) {
+                  final isWide = kpiConstraints.maxWidth >= 900;
+                  final crossAxisCount = isWide ? 4 : 2;
+                  final spacing = isNarrow ? 8.0 : 10.0;
+                  final width = (kpiConstraints.maxWidth - (crossAxisCount - 1) * spacing) / crossAxisCount;
+
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    children: [
+                      SizedBox(
+                        width: width,
+                        child: _KpiCard(
+                          label: 'Total Sales',
+                          value: _money(totalSales),
+                          icon: Icons.payments_rounded,
+                          color: const Color(0xFF3B7D52),
+                          fillColor: const Color(0xFFE8F5E9),
+                        ),
+                      ),
+                      SizedBox(
+                        width: width,
+                        child: _KpiCard(
+                          label: 'Total Orders',
+                          value: '$totalOrders',
+                          icon: Icons.receipt_long_rounded,
+                          color: const Color(0xFF6B4423),
+                          fillColor: const Color(0xFFFFE8D2),
+                        ),
+                      ),
+                      SizedBox(
+                        width: width,
+                        child: _KpiCard(
+                          label: 'Average Order',
+                          value: _money(avgOrder),
+                          icon: Icons.point_of_sale_rounded,
+                          color: const Color(0xFF2E6B9E),
+                          fillColor: const Color(0xFFE1F0FA),
+                        ),
+                      ),
+                      SizedBox(
+                        width: width,
+                        child: _KpiCard(
+                          label: 'Low Stock Items',
+                          value: '$lowStockCount',
+                          icon: Icons.warning_amber_rounded,
+                          color: lowStockCount > 0 ? const Color(0xFFC62828) : const Color(0xFF3B7D52),
+                          fillColor: lowStockCount > 0 ? const Color(0xFFFFEBEE) : const Color(0xFFE8F5E9),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+
+              // Native Sales Trend Chart
+              _SalesTrendChartCard(orders: orders, preset: _preset, customRange: _customRange),
+              const SizedBox(height: 14),
+
+              // 2-Column bottom layout: Top Selling Products & Category Sales
+              LayoutBuilder(
+                builder: (context, btmConstraints) {
+                  final isWide = btmConstraints.maxWidth >= 850;
+                  if (isWide) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 5,
+                          child: _TopProductsCard(orders: orders, controller: controller),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          flex: 5,
+                          child: _CategorySalesCard(orders: orders, controller: controller),
+                        ),
+                      ],
+                    );
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _TopProductsCard(orders: orders, controller: controller),
+                      const SizedBox(height: 14),
+                      _CategorySalesCard(orders: orders, controller: controller),
+                    ],
+                  );
+                },
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-
-          // Native Sales Trend Chart
-          _SalesTrendChartCard(orders: orders, preset: _preset, customRange: _customRange),
-          const SizedBox(height: 14),
-
-          // 2-Column bottom layout: Top Selling Products & Category Sales
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 850;
-              if (isWide) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 5,
-                      child: _TopProductsCard(orders: orders, controller: controller),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      flex: 5,
-                      child: _CategorySalesCard(orders: orders, controller: controller),
-                    ),
-                  ],
-                );
-              }
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _TopProductsCard(orders: orders, controller: controller),
-                  const SizedBox(height: 14),
-                  _CategorySalesCard(orders: orders, controller: controller),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -848,61 +1020,75 @@ class _KpiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFDFB),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEFE6DC)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isSmall = constraints.maxWidth < 185;
+
+        return Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmall ? 8 : 12,
+            vertical: isSmall ? 8 : 10,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: fillColor,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 20),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFDFB),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFEFE6DC)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF8C7564),
-                  ),
+          child: Row(
+            children: [
+              Container(
+                width: isSmall ? 28 : 36,
+                height: isSmall ? 28 : 36,
+                decoration: BoxDecoration(
+                  color: fillColor,
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 16.5,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF2F251E),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Icon(icon, color: color, size: isSmall ? 16 : 19),
+              ),
+              SizedBox(width: isSmall ? 6 : 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: isSmall ? 10 : 11.5,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF8C7564),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        value,
+                        style: TextStyle(
+                          fontSize: isSmall ? 14 : 16.5,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF2F251E),
+                        ),
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -935,22 +1121,31 @@ class _SalesTrendChartCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Sales Trend',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF2F251E),
+              const Expanded(
+                child: Text(
+                  'Sales Trend',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF2F251E),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Text(
-                'Peak: ${_money(maxRevenue)}',
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF8C7564),
+              const SizedBox(width: 8),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    'Peak: ${_money(maxRevenue)}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF8C7564),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -979,15 +1174,17 @@ class _SalesTrendChartCard extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             if (bucket.revenue > 0)
-                              Text(
-                                _money(bucket.revenue),
-                                style: const TextStyle(
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF8C7564),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  _money(bucket.revenue),
+                                  style: const TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF8C7564),
+                                  ),
+                                  maxLines: 1,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             const SizedBox(height: 2),
                             Container(
@@ -1002,15 +1199,17 @@ class _SalesTrendChartCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              bucket.label,
-                              style: const TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF7A6A5E),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                bucket.label,
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF7A6A5E),
+                                ),
+                                maxLines: 1,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
@@ -1165,12 +1364,15 @@ class _TopProductsCard extends StatelessWidget {
             children: [
               Icon(Icons.star_rounded, size: 18, color: Color(0xFFFF8F4F)),
               SizedBox(width: 8),
-              Text(
-                'Top Selling Products',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF2F251E),
+              Expanded(
+                child: Text(
+                  'Top Selling Products',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF2F251E),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -1225,22 +1427,27 @@ class _TopProductsCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    '${top5[i].unitsSold} sold',
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF7A6A5E),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    _money(top5[i].revenue),
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF2F251E),
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _money(top5[i].revenue),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF2F251E),
+                        ),
+                      ),
+                      Text(
+                        '${top5[i].unitsSold} sold',
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF7A6A5E),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1329,12 +1536,15 @@ class _CategorySalesCard extends StatelessWidget {
             children: [
               Icon(Icons.pie_chart_outline_rounded, size: 18, color: Color(0xFF6B4423)),
               SizedBox(width: 8),
-              Text(
-                'Sales by Category',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF2F251E),
+              Expanded(
+                child: Text(
+                  'Sales by Category',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF2F251E),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -1381,12 +1591,19 @@ class _CategorySalesCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            Text(
-              '${stat.unitsSold} items  •  ${_money(stat.revenue)} ($percent%)',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF7A6A5E),
+            const SizedBox(width: 8),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '${stat.unitsSold} sold  •  ${_money(stat.revenue)} ($percent%)',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF7A6A5E),
+                  ),
+                ),
               ),
             ),
           ],
@@ -1475,11 +1692,17 @@ class _AdminProductsViewState extends State<_AdminProductsView> {
     final startIndex = _page * _pageSize;
     final pageItems = list.skip(startIndex).take(_pageSize).toList();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 650;
+        return SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: isNarrow ? 10 : 16,
+            vertical: isNarrow ? 10 : 16,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
           _AdminPageHeader(
             title: 'Products',
             subtitle: 'Manage catalog items, pricing, and availability',
@@ -1489,12 +1712,12 @@ class _AdminProductsViewState extends State<_AdminProductsView> {
               children: [
                 _ActionButton(
                   icon: Icons.upload_file_rounded,
-                  label: 'Import Excel',
+                  label: 'Upload Menu',
                   onPressed: () => importProductsExcel(context, controller),
                 ),
                 _ActionButton(
                   icon: Icons.download_rounded,
-                  label: 'Export Excel',
+                  label: 'Download Menu',
                   onPressed: () => _exportProductsExcel(context, controller),
                 ),
                 FilledButton.icon(
@@ -1811,6 +2034,8 @@ class _AdminProductsViewState extends State<_AdminProductsView> {
         ],
       ),
     );
+      },
+    );
   }
 }
 
@@ -1880,75 +2105,93 @@ class _AdminCustomizationsViewState extends State<_AdminCustomizationsView> {
     final totalOptionsCount = allGroups.fold<int>(0, (sum, g) => sum + g.options.length);
     final activeCount = allGroups.where((g) => g.enabled).length;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _AdminPageHeader(
-            title: 'Customizations',
-            subtitle: 'Dynamic modifier groups, add-ons, sizes, and menu options',
-            trailing: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                _ActionButton(
-                  icon: Icons.upload_file_rounded,
-                  label: 'Import Excel',
-                  onPressed: () => importProductsExcel(context, controller),
-                ),
-                _ActionButton(
-                  icon: Icons.download_rounded,
-                  label: 'Export Excel',
-                  onPressed: () => _exportProductsExcel(context, controller),
-                ),
-                FilledButton.icon(
-                  onPressed: () => _openModifierGroupDialog(context, controller),
-                  icon: const Icon(Icons.add_rounded, size: 16),
-                  label: const Text('Add Group'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF6B4423),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 650;
+        return SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: isNarrow ? 10 : 16,
+            vertical: isNarrow ? 10 : 16,
           ),
-          const SizedBox(height: 14),
-
-          // Mini Stats Strip
-          Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: _CustomizationStatCard(
-                  title: 'Total Groups',
-                  value: '${allGroups.length}',
-                  icon: Icons.tune_rounded,
+              _AdminPageHeader(
+                title: 'Customizations',
+                subtitle: 'Dynamic modifier groups, add-ons, sizes, and menu options',
+                trailing: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _ActionButton(
+                      icon: Icons.upload_file_rounded,
+                      label: 'Upload Menu',
+                      onPressed: () => importProductsExcel(context, controller),
+                    ),
+                    _ActionButton(
+                      icon: Icons.download_rounded,
+                      label: 'Download Menu',
+                      onPressed: () => _exportProductsExcel(context, controller),
+                    ),
+                    FilledButton.icon(
+                      onPressed: () => _openModifierGroupDialog(context, controller),
+                      icon: const Icon(Icons.add_rounded, size: 16),
+                      label: const Text('Add Group'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF6B4423),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _CustomizationStatCard(
-                  title: 'Active Groups',
-                  value: '$activeCount',
-                  icon: Icons.check_circle_outline_rounded,
-                  accentColor: const Color(0xFF2E7D32),
-                ),
+              const SizedBox(height: 14),
+
+              // Mini Stats Strip (2 columns on mobile)
+              LayoutBuilder(
+                builder: (context, statConstraints) {
+                  final isSmall = statConstraints.maxWidth < 600;
+                  final crossAxisCount = isSmall ? 2 : 3;
+                  final spacing = isNarrow ? 8.0 : 10.0;
+                  final cardWidth = (statConstraints.maxWidth - (crossAxisCount - 1) * spacing) / crossAxisCount;
+
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    children: [
+                      SizedBox(
+                        width: cardWidth,
+                        child: _CustomizationStatCard(
+                          title: 'Total Groups',
+                          value: '${allGroups.length}',
+                          icon: Icons.tune_rounded,
+                        ),
+                      ),
+                      SizedBox(
+                        width: cardWidth,
+                        child: _CustomizationStatCard(
+                          title: 'Active Groups',
+                          value: '$activeCount',
+                          icon: Icons.check_circle_outline_rounded,
+                          accentColor: const Color(0xFF2E7D32),
+                        ),
+                      ),
+                      SizedBox(
+                        width: isSmall ? statConstraints.maxWidth : cardWidth,
+                        child: _CustomizationStatCard(
+                          title: 'Total Options',
+                          value: '$totalOptionsCount',
+                          icon: Icons.format_list_bulleted_rounded,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _CustomizationStatCard(
-                  title: 'Total Options',
-                  value: '$totalOptionsCount',
-                  icon: Icons.format_list_bulleted_rounded,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
+              const SizedBox(height: 14),
 
           // Filters Toolbar
           Container(
@@ -1964,7 +2207,7 @@ class _AdminCustomizationsViewState extends State<_AdminCustomizationsView> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 SizedBox(
-                  width: 220,
+                  width: isNarrow ? double.infinity : 220,
                   height: 36,
                   child: TextField(
                     onChanged: (val) => setState(() {
@@ -2164,6 +2407,8 @@ class _AdminCustomizationsViewState extends State<_AdminCustomizationsView> {
         ],
       ),
     );
+      },
+    );
   }
 
   Future<void> _confirmDeleteGroup(
@@ -2217,47 +2462,72 @@ class _CustomizationStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFDFB),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFEFE6DC)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: (accentColor ?? const Color(0xFF6B4423)).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              size: 18,
-              color: accentColor ?? const Color(0xFF6B4423),
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isSmall = constraints.maxWidth < 185;
+
+        return Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isSmall ? 8 : 12,
+            vertical: isSmall ? 8 : 10,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF8C7564), fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF4A2C11)),
-                ),
-              ],
-            ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFDFB),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFEFE6DC)),
           ),
-        ],
-      ),
+          child: Row(
+            children: [
+              Container(
+                width: isSmall ? 28 : 34,
+                height: isSmall ? 28 : 34,
+                decoration: BoxDecoration(
+                  color: (accentColor ?? const Color(0xFF6B4423)).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  icon,
+                  size: isSmall ? 15 : 18,
+                  color: accentColor ?? const Color(0xFF6B4423),
+                ),
+              ),
+              SizedBox(width: isSmall ? 6 : 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: isSmall ? 10 : 11,
+                        color: const Color(0xFF8C7564),
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        value,
+                        style: TextStyle(
+                          fontSize: isSmall ? 14 : 16,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF4A2C11),
+                        ),
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -2307,179 +2577,171 @@ class _ModifierGroupCardRow extends StatelessWidget {
       }
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFEFE6DC))),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  InkWell(
-                    onTap: onMoveUp,
-                    borderRadius: BorderRadius.circular(4),
-                    child: Padding(
-                      padding: const EdgeInsets.all(2),
-                      child: Icon(
-                        Icons.keyboard_arrow_up_rounded,
-                        size: 18,
-                        color: isFirst ? const Color(0xFFD0C4B8) : const Color(0xFF6B4423),
-                      ),
-                    ),
-                  ),
-                  InkWell(
-                    onTap: onMoveDown,
-                    borderRadius: BorderRadius.circular(4),
-                    child: Padding(
-                      padding: const EdgeInsets.all(2),
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 18,
-                        color: isLast ? const Color(0xFFD0C4B8) : const Color(0xFF6B4423),
-                      ),
-                    ),
-                  ),
-                ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+
+        Widget buildReorderButtons({bool horizontal = false}) {
+          final up = InkWell(
+            onTap: onMoveUp,
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(
+                Icons.keyboard_arrow_up_rounded,
+                size: 18,
+                color: isFirst ? const Color(0xFFD0C4B8) : const Color(0xFF6B4423),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            group.name,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: group.enabled ? const Color(0xFF4A2C11) : const Color(0xFF9E8D81),
-                              decoration: group.enabled ? null : TextDecoration.lineThrough,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: group.isRequired
-                                ? const Color(0xFFFFF0E5)
-                                : const Color(0xFFF0F4F8),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: group.isRequired
-                                  ? const Color(0xFFFF8F4F).withValues(alpha: 0.4)
-                                  : const Color(0xFFB0C4DE).withValues(alpha: 0.5),
-                            ),
-                          ),
-                          child: Text(
-                            group.selectionRuleLabel,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w600,
-                              color: group.isRequired
-                                  ? const Color(0xFFB25010)
-                                  : const Color(0xFF335577),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: [
-                        if (categoryNames.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE8F5E9),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.category_outlined, size: 11, color: Color(0xFF2E7D32)),
-                                const SizedBox(width: 3),
-                                Text(
-                                  'Categories: ${categoryNames.join(', ')}',
-                                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF2E7D32), fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ),
-                          ),
-                        if (productNames.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEDE7F6),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.coffee_outlined, size: 11, color: Color(0xFF5E35B1)),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '${productNames.length} Product${productNames.length == 1 ? '' : 's'}',
-                                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF5E35B1), fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ),
-                          ),
-                        if (categoryNames.isEmpty && productNames.isEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFF3E0),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              'Unassigned / Menu-wide',
-                              style: TextStyle(fontSize: 10.5, color: Color(0xFFE65100), fontWeight: FontWeight.w500),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
+            ),
+          );
+          final down = InkWell(
+            onTap: onMoveDown,
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 18,
+                color: isLast ? const Color(0xFFD0C4B8) : const Color(0xFF6B4423),
+              ),
+            ),
+          );
+          if (horizontal) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [up, down],
+            );
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [up, down],
+          );
+        }
+
+        Widget buildScopeBadges() {
+          return Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              if (categoryNames.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.category_outlined, size: 11, color: Color(0xFF2E7D32)),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Categories: ${categoryNames.join(', ')}',
+                        style: const TextStyle(fontSize: 10.5, color: Color(0xFF2E7D32), fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              if (productNames.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEDE7F6),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.coffee_outlined, size: 11, color: Color(0xFF5E35B1)),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${productNames.length} Product${productNames.length == 1 ? '' : 's'}',
+                        style: const TextStyle(fontSize: 10.5, color: Color(0xFF5E35B1), fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              if (categoryNames.isEmpty && productNames.isEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3E0),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'Unassigned / Menu-wide',
+                    style: TextStyle(fontSize: 10.5, color: Color(0xFFE65100), fontWeight: FontWeight.w500),
+                  ),
+                ),
+            ],
+          );
+        }
+
+        Widget buildRuleBadge() {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: group.isRequired
+                  ? const Color(0xFFFFF0E5)
+                  : const Color(0xFFF0F4F8),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: group.isRequired
+                    ? const Color(0xFFFF8F4F).withValues(alpha: 0.4)
+                    : const Color(0xFFB0C4DE).withValues(alpha: 0.5),
+              ),
+            ),
+            child: Text(
+              group.selectionRuleLabel,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: group.isRequired
+                    ? const Color(0xFFB25010)
+                    : const Color(0xFF335577),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          );
+        }
+
+        Widget buildActiveToggle({bool compact = false}) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                group.enabled ? 'Active' : 'Disabled',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: group.enabled ? const Color(0xFF2E7D32) : const Color(0xFF9E8D81),
                 ),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    group.enabled ? 'Active' : 'Disabled',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: group.enabled ? const Color(0xFF2E7D32) : const Color(0xFF9E8D81),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Transform.scale(
-                    scale: 0.8,
-                    child: Switch(
-                      value: group.enabled,
-                      onChanged: onToggleEnabled,
-                      activeThumbColor: const Color(0xFF6B4423),
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 4),
+              Transform.scale(
+                scale: compact ? 0.78 : 0.8,
+                child: Switch(
+                  value: group.enabled,
+                  onChanged: onToggleEnabled,
+                  activeThumbColor: const Color(0xFF6B4423),
+                  materialTapTargetSize: compact ? MaterialTapTargetSize.shrinkWrap : null,
+                ),
               ),
+            ],
+          );
+        }
+
+        Widget buildActionButtons() {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               IconButton(
                 icon: const Icon(Icons.edit_outlined, size: 17),
                 color: const Color(0xFF6B4423),
                 tooltip: 'Edit',
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                 onPressed: onEdit,
               ),
               IconButton(
@@ -2487,13 +2749,15 @@ class _ModifierGroupCardRow extends StatelessWidget {
                 color: const Color(0xFFC62828),
                 tooltip: 'Delete',
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                 onPressed: onDelete,
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
+          );
+        }
+
+        Widget buildOptionsWrap() {
+          return Wrap(
             spacing: 6,
             runSpacing: 6,
             children: group.options.map((option) {
@@ -2548,12 +2812,105 @@ class _ModifierGroupCardRow extends StatelessWidget {
                 ),
               );
             }).toList(),
+          );
+        }
+
+        return Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 10 : 14,
+            vertical: isMobile ? 10 : 12,
           ),
-        ],
-      ),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: Color(0xFFEFE6DC))),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isMobile) ...[
+                // Row 1: Drag/reorder icon + customization name + edit/delete actions
+                Row(
+                  children: [
+                    buildReorderButtons(horizontal: true),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        group.name,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: group.enabled ? const Color(0xFF4A2C11) : const Color(0xFF9E8D81),
+                          decoration: group.enabled ? null : TextDecoration.lineThrough,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    buildActionButtons(),
+                  ],
+                ),
+                const SizedBox(height: 6),
+
+                // Row 2: Selection type badge (Single/Multi, Required/Optional) + Active toggle
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Flexible(child: buildRuleBadge()),
+                    const SizedBox(width: 8),
+                    buildActiveToggle(compact: true),
+                  ],
+                ),
+                const SizedBox(height: 6),
+
+                // Row 3: Assigned products/categories badge
+                buildScopeBadges(),
+              ] else ...[
+                // Desktop: Single horizontal header row
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    buildReorderButtons(horizontal: false),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  group.name,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: group.enabled ? const Color(0xFF4A2C11) : const Color(0xFF9E8D81),
+                                    decoration: group.enabled ? null : TextDecoration.lineThrough,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              buildRuleBadge(),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          buildScopeBadges(),
+                        ],
+                      ),
+                    ),
+                    buildActiveToggle(compact: false),
+                    buildActionButtons(),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 8),
+              buildOptionsWrap(),
+            ],
+          ),
+        );
+      },
     );
   }
 }
+
 
 class _AdminInventoryView extends StatefulWidget {
   const _AdminInventoryView({required this.controller});
@@ -2594,11 +2951,17 @@ class _AdminInventoryViewState extends State<_AdminInventoryView> {
     final startIndex = _page * _pageSize;
     final pageItems = list.skip(startIndex).take(_pageSize).toList();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 650;
+        return SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: isNarrow ? 10 : 16,
+            vertical: isNarrow ? 10 : 16,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
           _AdminPageHeader(
             title: 'Inventory',
             subtitle: 'Stock levels, reorder thresholds, and inventory health',
@@ -2608,12 +2971,12 @@ class _AdminInventoryViewState extends State<_AdminInventoryView> {
               children: [
                 _ActionButton(
                   icon: Icons.upload_file_rounded,
-                  label: 'Import Excel',
+                  label: 'Upload Stock',
                   onPressed: () => _importInventoryExcel(context, controller),
                 ),
                 _ActionButton(
                   icon: Icons.download_rounded,
-                  label: 'Export Excel',
+                  label: 'Download Stock',
                   onPressed: () => _exportInventoryExcel(context, controller),
                 ),
                 FilledButton.icon(
@@ -2897,6 +3260,8 @@ class _AdminInventoryViewState extends State<_AdminInventoryView> {
         ],
       ),
     );
+      },
+    );
   }
 }
 
@@ -2945,14 +3310,20 @@ class _AdminOrdersViewState extends State<_AdminOrdersView> {
     final startIndex = _page * _pageSize;
     final pageItems = list.skip(startIndex).take(_pageSize).toList();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 650;
+        return SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: isNarrow ? 10 : 16,
+            vertical: isNarrow ? 10 : 16,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
           _AdminPageHeader(
             title: 'Orders',
-            subtitle: 'Transaction history, audit trail, and customer receipts',
+            subtitle: 'Order history, activity logs, and customer receipts',
             trailing: _AdminDateRangeSelector(
               preset: _preset,
               customRange: _customRange,
@@ -3202,6 +3573,8 @@ class _AdminOrdersViewState extends State<_AdminOrdersView> {
           ),
         ],
       ),
+    );
+      },
     );
   }
 
@@ -3802,7 +4175,9 @@ Future<void> _openOrderDetailsDialog(
                                   } catch (e) {
                                     showAutoHidingSnackBar(
                                       messenger: messenger,
-                                      content: Text('Print error: $e'),
+                                      content: const Text(
+                                        'Unable to print receipt. Please check the printer connection.',
+                                      ),
                                       duration: const Duration(seconds: 5),
                                     );
                                   } finally {
@@ -3959,19 +4334,19 @@ Future<void> _importFromFile(
     controller.importStateJson(text);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Admin data imported from file')),
+        const SnackBar(content: Text('Store records successfully restored from backup.')),
       );
     }
-  } on FormatException catch (error) {
+  } on FormatException catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Import failed: ${error.message}')),
+        const SnackBar(content: Text('Unable to restore store records. Please check the backup file.')),
       );
     }
   } catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Import failed: invalid JSON file.')),
+        const SnackBar(content: Text('Unable to restore data. The selected file format is invalid.')),
       );
     }
   }
@@ -3985,7 +4360,7 @@ Future<bool?> _confirmImport(
   return showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Replace admin data?'),
+      title: const Text('Replace Store Data?'),
       content: SizedBox(
         width: 520,
         child: Column(
@@ -3993,7 +4368,9 @@ Future<bool?> _confirmImport(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'You are about to import "$fileName". This will replace the current admin data.',
+              controller.isDemo
+                  ? 'You are in Demo Mode. Restoring "$fileName" will replace demo data in this session only, and will never affect live store records.'
+                  : 'You are about to restore "$fileName". This will replace your current store records with the backup file.',
             ),
             const SizedBox(height: 12),
             Text(
@@ -4004,8 +4381,10 @@ Future<bool?> _confirmImport(
               '${controller.activeShifts.length} shifts, and current settings.',
             ),
             const SizedBox(height: 12),
-            const Text(
-              'Use this only if you want to overwrite the live store state with the backup file.',
+            Text(
+              controller.isDemo
+                  ? 'This applies only to your demo session.'
+                  : 'Use this only if you want to restore your store records from this backup file.',
             ),
           ],
         ),
@@ -4017,7 +4396,7 @@ Future<bool?> _confirmImport(
         ),
         FilledButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
-          child: const Text('Replace data'),
+          child: const Text('Replace Store Data'),
         ),
       ],
     ),
@@ -4046,7 +4425,7 @@ Future<void> _exportProductsExcel(
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Products exported to ${_savedFileLabel(savedTo)}'),
+        content: Text('Menu downloaded to ${_savedFileLabel(savedTo)}'),
       ),
     );
   }
@@ -4091,20 +4470,20 @@ Future<void> importProductsExcel(
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Imported ${products.length} products from Excel'),
+          content: Text('Successfully loaded ${products.length} products to your menu.'),
         ),
       );
     }
-  } on FormatException catch (error) {
+  } on FormatException catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Import failed: ${error.message}')),
+        const SnackBar(content: Text('Unable to update menu. Please select a valid spreadsheet.')),
       );
     }
   } catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Import failed: invalid Excel file.')),
+        const SnackBar(content: Text('Unable to update menu. Please select a valid spreadsheet.')),
       );
     }
   }
@@ -4129,7 +4508,7 @@ Future<void> _exportInventoryExcel(
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Inventory exported to ${_savedFileLabel(savedTo)}'),
+        content: Text('Stock report downloaded to ${_savedFileLabel(savedTo)}'),
       ),
     );
   }
@@ -4166,20 +4545,20 @@ Future<void> _importInventoryExcel(
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Imported ${inventoryItems.length} inventory rows'),
+          content: Text('Successfully updated ${inventoryItems.length} stock items.'),
         ),
       );
     }
-  } on FormatException catch (error) {
+  } on FormatException catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Import failed: ${error.message}')),
+        const SnackBar(content: Text('Unable to update stock. Please select a valid spreadsheet.')),
       );
     }
   } catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Import failed: invalid Excel file.')),
+        const SnackBar(content: Text('Unable to update stock. Please select a valid spreadsheet.')),
       );
     }
   }
@@ -4193,9 +4572,9 @@ Future<bool?> _confirmInventoryImport(
   return showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Replace inventory?'),
+      title: const Text('Replace Stock List?'),
       content: Text(
-        'Import "$fileName" and replace the current inventory list with $itemCount rows?',
+        'Upload "$fileName" and update your inventory list with $itemCount stock items?',
       ),
       actions: [
         TextButton(
@@ -4204,7 +4583,7 @@ Future<bool?> _confirmInventoryImport(
         ),
         FilledButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
-          child: const Text('Replace inventory'),
+          child: const Text('Update Stock'),
         ),
       ],
     ),
@@ -4219,9 +4598,9 @@ Future<bool?> _confirmProductImport(
   return showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Replace products?'),
+      title: const Text('Update Menu?'),
       content: Text(
-        'Import "$fileName" and replace the current product list with $productCount rows?',
+        'Upload "$fileName" and update your menu with $productCount products?',
       ),
       actions: [
         TextButton(
@@ -4230,7 +4609,7 @@ Future<bool?> _confirmProductImport(
         ),
         FilledButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
-          child: const Text('Replace products'),
+          child: const Text('Update Menu'),
         ),
       ],
     ),

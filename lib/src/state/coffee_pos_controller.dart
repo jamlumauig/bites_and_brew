@@ -18,9 +18,13 @@ import '../utils/printing/platform_adapters/printer_resolver.dart';
 import '../utils/receipt_printer.dart' as receipt_printer;
 
 class CoffeePosController extends ChangeNotifier {
-  CoffeePosController({required this.repository});
+  CoffeePosController({
+    required this.repository,
+    this.isDemo = false,
+  });
 
   final CoffeePosRepository repository;
+  final bool isDemo;
   final CheckoutCalculator _calculator = const CheckoutCalculator();
 
   bool _isLoading = true;
@@ -77,10 +81,10 @@ class CoffeePosController extends ChangeNotifier {
   String _orderType = 'Dine-in';
   String _cashierName = 'Alex';
   String? _selectedCustomerId;
-  String _storeName = 'Haven & Co.';
+  String _storeName = 'LUNAN';
   String _storeAddress = 'Store address not set';
   String _storeContact = 'Store contact not set';
-  String _receiptHeader = 'Thank you for your order';
+  String _receiptHeader = 'May lugar ka rito.';
   String _receiptFooter = 'Visit us again soon.';
   String _currencyCode = 'PHP';
   String _currencySymbol = '₱';
@@ -109,16 +113,22 @@ class CoffeePosController extends ChangeNotifier {
   bool _needsRealtimeDatabaseMigration = false;
 
   String? get _currentUserId {
+    if (isDemo) {
+      return null;
+    }
     if (Firebase.apps.isEmpty) {
       return null;
     }
     return FirebaseAuth.instance.currentUser?.uid;
   }
 
-  String get _persistenceScope => _currentUserId ?? 'guest';
-  String _scopedPreferenceKey(String key) => '$key$_persistenceScope';
+  String get _persistenceScope => isDemo ? 'demo_scope' : (_currentUserId ?? 'guest');
+  String _scopedPreferenceKey(String key) => isDemo ? 'demo_storage_$key' : '$key$_persistenceScope';
 
   DatabaseReference? get _realtimeSnapshotReference {
+    if (isDemo) {
+      return null;
+    }
     final userId = _currentUserId;
     if (userId == null) {
       return null;
@@ -134,7 +144,7 @@ class CoffeePosController extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   bool get isCheckingOut => _isCheckingOut;
-  Role get role => _role;
+  Role get role => isDemo ? Role.admin : _role;
   int get selectedCategoryIndex => _selectedCategoryIndex;
   String? get activeProductId => _activeProductId;
   List<CartItem> get cart => List.unmodifiable(_cart);
@@ -287,6 +297,22 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    if (isDemo) {
+      _role = Role.admin;
+      final savedSnapshot = await _loadSavedStateSnapshot();
+      if (savedSnapshot != null) {
+        _applyStateJson(savedSnapshot);
+        _ensureDefaultCategories();
+      } else {
+        final bootstrap = StoreBootstrap.demo();
+        _applyBootstrap(bootstrap);
+        await _saveLocalStateSnapshot(exportStateJson(pretty: false));
+      }
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+
     await _loadAuthenticatedRole();
     // A signed-in user's Firestore state is authoritative so every device
     // starts from the same data rather than an older local cache.
@@ -1606,6 +1632,10 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   Future<void> restoreDemoData() async {
+    if (isDemo) {
+      await resetDemoData();
+      return;
+    }
     final bootstrap = await repository.loadBootstrap();
     _applyBootstrap(bootstrap);
     _selectedCategoryIndex = 0;
@@ -1619,10 +1649,10 @@ class CoffeePosController extends ChangeNotifier {
     _paymentType = PaymentType.card;
     _cashierName = 'Alex';
     _selectedCustomerId = null;
-    _storeName = 'Haven & Co.';
+    _storeName = 'LUNAN';
     _storeAddress = 'Store address not set';
     _storeContact = 'Store contact not set';
-    _receiptHeader = 'Thank you for your order';
+    _receiptHeader = 'May lugar ka rito.';
     _receiptFooter = 'Visit us again soon.';
     _currencyCode = 'PHP';
     _currencySymbol = '₱';
@@ -1634,6 +1664,39 @@ class CoffeePosController extends ChangeNotifier {
     _showBadges = true;
     _highContrastMode = false;
     await _clearSavedStateSnapshot();
+    notifyListeners();
+  }
+
+  Future<void> resetDemoData() async {
+    final demoBootstrap = StoreBootstrap.demo();
+    _applyBootstrap(demoBootstrap);
+    _selectedCategoryIndex = 0;
+    _activeProductId = null;
+    _cart.clear();
+    _discountAmount = 0;
+    _selectedDiscountId = null;
+    _taxRate = 0.12;
+    _serviceChargeRate = 0.0;
+    _cashReceived = 0;
+    _paymentType = PaymentType.card;
+    _cashierName = 'Alex';
+    _selectedCustomerId = null;
+    _storeName = 'LUNAN';
+    _storeAddress = 'Store address not set';
+    _storeContact = 'Store contact not set';
+    _receiptHeader = 'May lugar ka rito.';
+    _receiptFooter = 'Visit us again soon.';
+    _currencyCode = 'PHP';
+    _currencySymbol = '₱';
+    _printerName = 'GEZHI_micro_printer';
+    _autoPrintReceipts = true;
+    _thermalTransport = 'Direct print (no prompt)';
+    _thermalPaperWidth = 80;
+    _compactReceiptStyle = false;
+    _showBadges = true;
+    _highContrastMode = false;
+    await _clearSavedStateSnapshot();
+    await _saveLocalStateSnapshot(exportStateJson(pretty: false));
     notifyListeners();
   }
 
@@ -1672,10 +1735,10 @@ class CoffeePosController extends ChangeNotifier {
     _paymentType = PaymentType.card;
     _cashierName = 'Alex';
     _selectedCustomerId = null;
-    _storeName = 'Haven & Co.';
+    _storeName = 'LUNAN';
     _storeAddress = 'Store address not set';
     _storeContact = 'Store contact not set';
-    _receiptHeader = 'Thank you for your order';
+    _receiptHeader = 'May lugar ka rito.';
     _receiptFooter = 'Visit us again soon.';
     _currencyCode = 'PHP';
     _currencySymbol = '₱';
@@ -1706,10 +1769,10 @@ class CoffeePosController extends ChangeNotifier {
     _paymentType = PaymentType.card;
     _cashierName = 'Alex';
     _selectedCustomerId = null;
-    _storeName = 'Haven & Co.';
+    _storeName = 'LUNAN';
     _storeAddress = 'Store address not set';
     _storeContact = 'Store contact not set';
-    _receiptHeader = 'Thank you for your order';
+    _receiptHeader = 'May lugar ka rito.';
     _receiptFooter = 'Visit us again soon.';
     _currencyCode = 'PHP';
     _currencySymbol = '₱';
@@ -1731,6 +1794,9 @@ class CoffeePosController extends ChangeNotifier {
       final snapshot = prefs.getString(scopedKey);
       if (snapshot != null) {
         return snapshot;
+      }
+      if (isDemo) {
+        return null;
       }
       final legacySnapshot = prefs.getString(_resetSnapshotPreferenceKey);
       if (legacySnapshot != null) {
@@ -1774,7 +1840,9 @@ class CoffeePosController extends ChangeNotifier {
 
   Future<void> _persistStateSnapshot(String snapshot) async {
     await _saveLocalStateSnapshot(snapshot);
-    await _saveFirebaseStateSnapshot(snapshot);
+    if (!isDemo) {
+      await _saveFirebaseStateSnapshot(snapshot);
+    }
   }
 
   Future<void> _saveLocalStateSnapshot(String snapshot) async {
@@ -1815,7 +1883,7 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> _loadSharedCatalog() async {
-    if (Firebase.apps.isEmpty || _currentUserId == null) {
+    if (isDemo || Firebase.apps.isEmpty || _currentUserId == null) {
       return null;
     }
     try {
@@ -1830,7 +1898,7 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> _loadSharedOrders() async {
-    if (Firebase.apps.isEmpty || _currentUserId == null) {
+    if (isDemo || Firebase.apps.isEmpty || _currentUserId == null) {
       return null;
     }
     try {
@@ -1846,7 +1914,7 @@ class CoffeePosController extends ChangeNotifier {
 
   void _startSharedCatalogSubscription() {
     _sharedCatalogSubscription?.cancel();
-    if (Firebase.apps.isEmpty || _currentUserId == null) {
+    if (isDemo || Firebase.apps.isEmpty || _currentUserId == null) {
       return;
     }
     _sharedCatalogSubscription = _sharedCatalogReference.onValue.listen((
@@ -1863,7 +1931,7 @@ class CoffeePosController extends ChangeNotifier {
 
   void _startSharedOrdersSubscription() {
     _sharedOrdersSubscription?.cancel();
-    if (Firebase.apps.isEmpty || _currentUserId == null) {
+    if (isDemo || Firebase.apps.isEmpty || _currentUserId == null) {
       return;
     }
     _sharedOrdersSubscription = _sharedOrdersReference.onValue.listen((event) {
@@ -1878,7 +1946,8 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   Future<void> _saveSharedCatalog() async {
-    if (Firebase.apps.isEmpty ||
+    if (isDemo ||
+        Firebase.apps.isEmpty ||
         _currentUserId == null ||
         _role != Role.admin) {
       return;
@@ -1893,7 +1962,7 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   Future<bool> _saveSharedOrders() async {
-    if (Firebase.apps.isEmpty || _currentUserId == null) {
+    if (isDemo || Firebase.apps.isEmpty || _currentUserId == null) {
       return false;
     }
     try {
@@ -1914,7 +1983,7 @@ class CoffeePosController extends ChangeNotifier {
   }
 
   Future<bool> _removeSharedActiveOrder(String orderId) async {
-    if (Firebase.apps.isEmpty || _currentUserId == null) {
+    if (isDemo || Firebase.apps.isEmpty || _currentUserId == null) {
       return false;
     }
     try {
@@ -1951,19 +2020,23 @@ class CoffeePosController extends ChangeNotifier {
       await prefs
           .remove(_scopedPreferenceKey(_resetSnapshotPreferenceKey))
           .timeout(const Duration(seconds: 2));
-      await prefs
-          .remove(_resetSnapshotPreferenceKey)
-          .timeout(const Duration(seconds: 2));
-      await prefs
-          .remove(_scopedPreferenceKey(_legacyResetFlagPreferenceKey))
-          .timeout(const Duration(seconds: 2));
-      await prefs
-          .remove(_legacyResetFlagPreferenceKey)
-          .timeout(const Duration(seconds: 2));
+      if (!isDemo) {
+        await prefs
+            .remove(_resetSnapshotPreferenceKey)
+            .timeout(const Duration(seconds: 2));
+        await prefs
+            .remove(_scopedPreferenceKey(_legacyResetFlagPreferenceKey))
+            .timeout(const Duration(seconds: 2));
+        await prefs
+            .remove(_legacyResetFlagPreferenceKey)
+            .timeout(const Duration(seconds: 2));
+      }
     } catch (_) {
       // Ignore cleanup failures.
     }
-    unawaited(_clearFirebaseStateSnapshot());
+    if (!isDemo) {
+      unawaited(_clearFirebaseStateSnapshot());
+    }
   }
 
   Future<void> _clearLegacyResetMode() async {
