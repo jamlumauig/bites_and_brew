@@ -2,7 +2,14 @@ enum Role { cashier, admin }
 
 enum OrderStatus { draft, paid, voided, refunded }
 
-enum OrderQueueStatus { pending, preparing, held, awaitingPayment }
+enum OrderQueueStatus {
+  pending,
+  preparing,
+  onTheWay,
+  delivered,
+  held,
+  awaitingPayment,
+}
 
 enum DiscountType { none, seniorCitizen, pwd, percentage, fixedAmount }
 
@@ -1290,21 +1297,37 @@ class OrderQueueRecord {
     required this.id,
     required this.sequence,
     this.orderNumber,
+    this.trackingToken,
     required this.status,
     required this.customerName,
     required this.orderType,
     required this.createdAt,
     required this.items,
+    this.customerPhone,
+    this.customerEmail,
+    this.deliveryAddress,
+    this.deliveryLandmark,
+    this.deliveryNotes,
+    this.deliveryFee = 0,
+    this.paymentMethod,
   });
 
   final String id;
   final int sequence;
   final String? orderNumber;
+  final String? trackingToken;
   final OrderQueueStatus status;
   final String customerName;
   final String orderType;
   final DateTime createdAt;
   final List<OrderLineSnapshot> items;
+  final String? customerPhone;
+  final String? customerEmail;
+  final String? deliveryAddress;
+  final String? deliveryLandmark;
+  final String? deliveryNotes;
+  final double deliveryFee;
+  final String? paymentMethod;
 
   String get displayOrderNumber {
     if (orderNumber != null && orderNumber!.isNotEmpty) {
@@ -1316,15 +1339,74 @@ class OrderQueueRecord {
   double get subtotal =>
       items.fold<double>(0, (sum, item) => sum + item.lineTotal);
 
+  double get total => subtotal + deliveryFee;
+
+  bool get isDelivery =>
+      orderType.toLowerCase().contains('delivery') ||
+      (deliveryAddress != null && deliveryAddress!.trim().isNotEmpty);
+
+  OrderQueueRecord copyWith({
+    String? id,
+    int? sequence,
+    String? orderNumber,
+    String? trackingToken,
+    OrderQueueStatus? status,
+    String? customerName,
+    String? orderType,
+    DateTime? createdAt,
+    List<OrderLineSnapshot>? items,
+    String? customerPhone,
+    String? customerEmail,
+    String? deliveryAddress,
+    String? deliveryLandmark,
+    String? deliveryNotes,
+    double? deliveryFee,
+    String? paymentMethod,
+  }) {
+    return OrderQueueRecord(
+      id: id ?? this.id,
+      sequence: sequence ?? this.sequence,
+      orderNumber: orderNumber ?? this.orderNumber,
+      trackingToken: trackingToken ?? this.trackingToken,
+      status: status ?? this.status,
+      customerName: customerName ?? this.customerName,
+      orderType: orderType ?? this.orderType,
+      createdAt: createdAt ?? this.createdAt,
+      items: items ?? this.items,
+      customerPhone: customerPhone ?? this.customerPhone,
+      customerEmail: customerEmail ?? this.customerEmail,
+      deliveryAddress: deliveryAddress ?? this.deliveryAddress,
+      deliveryLandmark: deliveryLandmark ?? this.deliveryLandmark,
+      deliveryNotes: deliveryNotes ?? this.deliveryNotes,
+      deliveryFee: deliveryFee ?? this.deliveryFee,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+    );
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'id': id,
     'sequence': sequence,
     'orderNumber': displayOrderNumber,
+    if (trackingToken != null && trackingToken!.isNotEmpty)
+      'trackingToken': trackingToken,
     'status': status.name,
     'customerName': customerName,
     'orderType': orderType,
     'createdAt': createdAt.toIso8601String(),
     'items': items.map((item) => item.toJson()).toList(growable: false),
+    if (customerPhone != null && customerPhone!.isNotEmpty)
+      'customerPhone': customerPhone,
+    if (customerEmail != null && customerEmail!.isNotEmpty)
+      'customerEmail': customerEmail,
+    if (deliveryAddress != null && deliveryAddress!.isNotEmpty)
+      'deliveryAddress': deliveryAddress,
+    if (deliveryLandmark != null && deliveryLandmark!.isNotEmpty)
+      'deliveryLandmark': deliveryLandmark,
+    if (deliveryNotes != null && deliveryNotes!.isNotEmpty)
+      'deliveryNotes': deliveryNotes,
+    if (deliveryFee > 0) 'deliveryFee': deliveryFee,
+    if (paymentMethod != null && paymentMethod!.isNotEmpty)
+      'paymentMethod': paymentMethod,
   };
 
   factory OrderQueueRecord.fromJson(Map<String, dynamic> json) {
@@ -1332,6 +1414,7 @@ class OrderQueueRecord {
       id: json['id'] as String? ?? '',
       sequence: _intValue(json['sequence']),
       orderNumber: json['orderNumber'] as String?,
+      trackingToken: json['trackingToken'] as String?,
       status: _enumFromName(
         OrderQueueStatus.values,
         json['status'] as String?,
@@ -1343,6 +1426,13 @@ class OrderQueueRecord {
           DateTime.tryParse(json['createdAt'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
       items: _readList(json['items'], OrderLineSnapshot.fromJson),
+      customerPhone: json['customerPhone'] as String?,
+      customerEmail: json['customerEmail'] as String?,
+      deliveryAddress: json['deliveryAddress'] as String?,
+      deliveryLandmark: json['deliveryLandmark'] as String?,
+      deliveryNotes: json['deliveryNotes'] as String?,
+      deliveryFee: _numValue(json['deliveryFee']),
+      paymentMethod: json['paymentMethod'] as String?,
     );
   }
 }
@@ -1734,8 +1824,9 @@ T _enumFromName<T extends Enum>(Iterable<T> values, String? name, T fallback) {
   if (name == null || name.isEmpty) {
     return fallback;
   }
+  final lower = name.toLowerCase();
   for (final value in values) {
-    if (value.name == name) {
+    if (value.name.toLowerCase() == lower) {
       return value;
     }
   }

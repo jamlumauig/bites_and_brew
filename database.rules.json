@@ -8,11 +8,17 @@
     },
     "store": {
       "catalog": {
-        ".read": "auth != null",
+        ".read": true,
         ".write": "auth != null && auth.token.role === 'admin'"
       },
       "orders": {
         ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "customer_orders": {
+      "$orderNumber": {
+        ".read": true,
         ".write": "auth != null"
       }
     }

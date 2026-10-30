@@ -308,7 +308,15 @@ class _SectionHost extends StatelessWidget {
               controller.resumeOrder(order);
               onNavigate(_ShellSection.cashier);
             },
-            onView: (order) => _showOrderDetails(context, order),
+            onView: (order) => _showOrderDetails(
+              context,
+              order,
+              controller: controller,
+              onContinue: () {
+                controller.resumeOrder(order);
+                onNavigate(_ShellSection.cashier);
+              },
+            ),
             onComplete: (order) => _changeOrderStatus(
               context,
               controller,
@@ -995,6 +1003,48 @@ class _InProgressOrdersPage extends StatelessWidget {
                 ),
                 itemBuilder: (context, index) {
                   final order = activeOrders[index];
+
+                  final String secondaryLabel;
+                  final IconData secondaryIcon;
+                  final VoidCallback secondaryAction;
+
+                  if (order.isDelivery) {
+                    switch (order.status) {
+                      case OrderQueueStatus.pending:
+                        secondaryLabel = 'Preparing';
+                        secondaryIcon = Icons.soup_kitchen_outlined;
+                        secondaryAction = () => controller.updateDeliveryStatus(
+                              order,
+                              OrderQueueStatus.preparing,
+                            );
+                        break;
+                      case OrderQueueStatus.preparing:
+                        secondaryLabel = 'OTW';
+                        secondaryIcon = Icons.delivery_dining;
+                        secondaryAction = () => controller.updateDeliveryStatus(
+                              order,
+                              OrderQueueStatus.onTheWay,
+                            );
+                        break;
+                      case OrderQueueStatus.onTheWay:
+                        secondaryLabel = 'Delivered';
+                        secondaryIcon = Icons.check_circle_outline;
+                        secondaryAction = () => controller.updateDeliveryStatus(
+                              order,
+                              OrderQueueStatus.delivered,
+                            );
+                        break;
+                      default:
+                        secondaryLabel = 'Complete';
+                        secondaryIcon = Icons.check_circle_outline;
+                        secondaryAction = () => onComplete(order);
+                    }
+                  } else {
+                    secondaryLabel = 'Complete';
+                    secondaryIcon = Icons.check_circle_outline;
+                    secondaryAction = () => onComplete(order);
+                  }
+
                   return _OrderTicketCard(
                     title: 'Order #${order.displayOrderNumber}',
                     subtitle: '${order.orderType}  •  ${order.customerName}',
@@ -1006,8 +1056,15 @@ class _InProgressOrdersPage extends StatelessWidget {
                     ),
                     total:
                         controller.transactionForQueue(order)?.total ??
-                        order.subtotal,
+                        order.total,
                     compactLandscape: compactLandscape,
+                    isDelivery: order.isDelivery,
+                    onSelectDeliveryStatus: order.isDelivery
+                        ? (newStatus) => controller.updateDeliveryStatus(
+                              order,
+                              newStatus,
+                            )
+                        : null,
                     primaryActionLabel: order.status == OrderQueueStatus.held
                         ? 'Continue Order'
                         : 'View',
@@ -1030,8 +1087,9 @@ class _InProgressOrdersPage extends StatelessWidget {
                             OrderAction.refund,
                           )
                         : null,
-                    secondaryActionLabel: 'Complete',
-                    onSecondaryAction: () => onComplete(order),
+                    secondaryActionLabel: secondaryLabel,
+                    secondaryActionIcon: secondaryIcon,
+                    onSecondaryAction: secondaryAction,
                     onPrintTicket: () async {
                       final messenger = ScaffoldMessenger.of(context);
                       final result =
@@ -2951,7 +3009,10 @@ class _OrderTicketCard extends StatelessWidget {
     required this.primaryActionLabel,
     required this.onPrimaryAction,
     required this.secondaryActionLabel,
+    this.secondaryActionIcon = Icons.check_circle_outline,
     required this.onSecondaryAction,
+    this.isDelivery = false,
+    this.onSelectDeliveryStatus,
     this.onPrintTicket,
     this.onCancel,
     this.onRefund,
@@ -2964,10 +3025,13 @@ class _OrderTicketCard extends StatelessWidget {
   final int itemCount;
   final double total;
   final bool compactLandscape;
+  final bool isDelivery;
   final String primaryActionLabel;
   final VoidCallback onPrimaryAction;
   final String secondaryActionLabel;
+  final IconData secondaryActionIcon;
   final VoidCallback onSecondaryAction;
+  final ValueChanged<OrderQueueStatus>? onSelectDeliveryStatus;
   final VoidCallback? onPrintTicket;
   final VoidCallback? onCancel;
   final VoidCallback? onRefund;
@@ -2990,6 +3054,15 @@ class _OrderTicketCard extends StatelessWidget {
           case 'preparing':
             statusBg = const Color(0xFFFFF3E0);
             statusFg = const Color(0xFFE65100);
+            break;
+          case 'on the way':
+          case 'ontheway':
+            statusBg = const Color(0xFFE0F2F1);
+            statusFg = const Color(0xFF00796B);
+            break;
+          case 'delivered':
+            statusBg = const Color(0xFFE8F5E9);
+            statusFg = const Color(0xFF2E7D32);
             break;
           case 'held':
             statusBg = const Color(0xFFECEFF1);
@@ -3025,15 +3098,40 @@ class _OrderTicketCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            title,
-                            style: TextStyle(
-                              fontSize: isVeryCompact ? 11.5 : (isCompact ? 12.5 : 14),
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF2F251E),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  title,
+                                  style: TextStyle(
+                                    fontSize: isVeryCompact ? 11.5 : (isCompact ? 12.5 : 14),
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF2F251E),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isDelivery) ...[
+                                const SizedBox(width: 4),
+                                Tooltip(
+                                  message: 'Online Delivery Order',
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE0F2F1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Icon(
+                                      Icons.delivery_dining,
+                                      size: 13,
+                                      color: Color(0xFF00796B),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 2),
                           Text(
@@ -3049,26 +3147,110 @@ class _OrderTicketCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isVeryCompact ? 5 : 7,
-                        vertical: isVeryCompact ? 2 : 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusBg,
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: statusFg.withValues(alpha: 0.2)),
-                      ),
-                      child: Text(
-                        status,
-                        style: TextStyle(
-                          fontSize: isVeryCompact ? 9 : 10,
-                          fontWeight: FontWeight.w700,
-                          color: statusFg,
+                    if (isDelivery && onSelectDeliveryStatus != null)
+                      PopupMenuButton<OrderQueueStatus>(
+                        tooltip: 'Update Delivery Status',
+                        padding: EdgeInsets.zero,
+                        onSelected: onSelectDeliveryStatus,
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: OrderQueueStatus.preparing,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.soup_kitchen_outlined,
+                                  size: 16,
+                                  color: Color(0xFFE65100),
+                                ),
+                                SizedBox(width: 8),
+                                Text('Set Preparing'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: OrderQueueStatus.onTheWay,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.delivery_dining,
+                                  size: 16,
+                                  color: Color(0xFF00796B),
+                                ),
+                                SizedBox(width: 8),
+                                Text('Set On the Way (OTW)'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: OrderQueueStatus.delivered,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle_outline,
+                                  size: 16,
+                                  color: Color(0xFF2E7D32),
+                                ),
+                                SizedBox(width: 8),
+                                Text('Mark Delivered'),
+                              ],
+                            ),
+                          ),
+                        ],
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isVeryCompact ? 5 : 7,
+                            vertical: isVeryCompact ? 2 : 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusBg,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: statusFg.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                status,
+                                style: TextStyle(
+                                  fontSize: isVeryCompact ? 9 : 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: statusFg,
+                                ),
+                                maxLines: 1,
+                              ),
+                              const SizedBox(width: 2),
+                              Icon(
+                                Icons.arrow_drop_down,
+                                size: 12,
+                                color: statusFg,
+                              ),
+                            ],
+                          ),
                         ),
-                        maxLines: 1,
+                      )
+                    else
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isVeryCompact ? 5 : 7,
+                          vertical: isVeryCompact ? 2 : 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusBg,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: statusFg.withValues(alpha: 0.2)),
+                        ),
+                        child: Text(
+                          status,
+                          style: TextStyle(
+                            fontSize: isVeryCompact ? 9 : 10,
+                            fontWeight: FontWeight.w700,
+                            color: statusFg,
+                          ),
+                          maxLines: 1,
+                        ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -3133,7 +3315,7 @@ class _OrderTicketCard extends StatelessWidget {
                     Expanded(
                       child: _TicketActionButton(
                         label: secondaryActionLabel,
-                        icon: Icons.check_circle_outline,
+                        icon: secondaryActionIcon,
                         onPressed: onSecondaryAction,
                         destructive: true,
                         compact: isCompact,
@@ -3848,182 +4030,511 @@ Widget _paymentBreakdownRow(
 
 Future<void> _showOrderDetails(
   BuildContext context,
-  OrderQueueRecord order,
-) async {
+  OrderQueueRecord initialOrder, {
+  CoffeePosController? controller,
+  VoidCallback? onContinue,
+}) async {
+  OrderQueueRecord currentOrder = initialOrder;
+
   await showDialog<void>(
     context: context,
     builder: (context) {
-      return AlertDialog(
-        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-        actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        title: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(
-              order.id,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8E0D1),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                _queueStatusText(order.status),
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF7B513B),
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+            contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            title: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _InfoChip(
-                      icon: Icons.storefront_outlined,
-                      label: order.orderType,
-                    ),
-                    _InfoChip(
-                      icon: Icons.person_outline,
-                      label: order.customerName,
-                    ),
-                    _InfoChip(
-                      icon: Icons.schedule_outlined,
-                      label: _formatTime(context, order.createdAt),
-                    ),
-                    _InfoChip(
-                      icon: Icons.format_list_bulleted,
-                      label:
-                          '${order.items.length} line${order.items.length == 1 ? '' : 's'}',
-                    ),
-                  ],
+                Text(
+                  currentOrder.id,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                 ),
-                const SizedBox(height: 14),
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFCF8F2),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0x1A9A7A60)),
+                    color: const Color(0xFFF8E0D1),
+                    borderRadius: BorderRadius.circular(999),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ...order.items.map(
-                        (item) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                  child: Text(
+                    _queueStatusText(currentOrder.status),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF7B513B),
+                    ),
+                  ),
+                ),
+                if (currentOrder.isDelivery)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0F2F1),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: const Color(0xFF00796B).withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.delivery_dining,
+                          size: 14,
+                          color: Color(0xFF00796B),
+                        ),
+                        SizedBox(width: 4),
+                        Text(
+                          'ONLINE DELIVERY',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF00796B),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _InfoChip(
+                          icon: Icons.storefront_outlined,
+                          label: currentOrder.orderType,
+                        ),
+                        _InfoChip(
+                          icon: Icons.person_outline,
+                          label: currentOrder.customerName,
+                        ),
+                        _InfoChip(
+                          icon: Icons.schedule_outlined,
+                          label: _formatTime(context, currentOrder.createdAt),
+                        ),
+                        _InfoChip(
+                          icon: Icons.format_list_bulleted,
+                          label:
+                              '${currentOrder.items.length} line${currentOrder.items.length == 1 ? '' : 's'}',
+                        ),
+                        if (currentOrder.customerPhone != null &&
+                            currentOrder.customerPhone!.isNotEmpty)
+                          _InfoChip(
+                            icon: Icons.phone_outlined,
+                            label: currentOrder.customerPhone!,
+                          ),
+                        if (currentOrder.paymentMethod != null &&
+                            currentOrder.paymentMethod!.isNotEmpty)
+                          _InfoChip(
+                            icon: Icons.payment_outlined,
+                            label:
+                                'Payment: ${currentOrder.paymentMethod!.toUpperCase()}',
+                          ),
+                      ],
+                    ),
+                    if (currentOrder.isDelivery) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0FDF4),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFF86EFAC)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.delivery_dining,
+                                      size: 16,
+                                      color: Color(0xFF166534),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Live Delivery Progress',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                            color: const Color(0xFF166534),
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: const Color(0xFF86EFAC),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _queueStatusText(currentOrder.status),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF166534),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            _DeliveryStepTracker(
+                              currentStatus: currentOrder.status,
+                            ),
+                            if (controller != null) ...[
+                              const SizedBox(height: 12),
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Text(
-                                      item.productName,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleSmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    child: _StatusActionButton(
+                                      label: 'Preparing',
+                                      icon: Icons.soup_kitchen_outlined,
+                                      isActive: currentOrder.status ==
+                                          OrderQueueStatus.preparing,
+                                      activeColor: const Color(0xFFE65100),
+                                      onPressed: () async {
+                                        await controller.updateDeliveryStatus(
+                                          currentOrder,
+                                          OrderQueueStatus.preparing,
+                                        );
+                                        setDialogState(() {
+                                          currentOrder = currentOrder.copyWith(
+                                            status: OrderQueueStatus.preparing,
+                                          );
+                                        });
+                                      },
                                     ),
                                   ),
-                                  Text(
-                                    '${item.quantity}x',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF7B513B),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: _StatusActionButton(
+                                      label: 'OTW',
+                                      icon: Icons.delivery_dining,
+                                      isActive: currentOrder.status ==
+                                          OrderQueueStatus.onTheWay,
+                                      activeColor: const Color(0xFF00796B),
+                                      onPressed: () async {
+                                        await controller.updateDeliveryStatus(
+                                          currentOrder,
+                                          OrderQueueStatus.onTheWay,
+                                        );
+                                        setDialogState(() {
+                                          currentOrder = currentOrder.copyWith(
+                                            status: OrderQueueStatus.onTheWay,
+                                          );
+                                        });
+                                      },
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Text(_money(item.lineTotal)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: _StatusActionButton(
+                                      label: 'Delivered',
+                                      icon: Icons.check_circle_outline,
+                                      isActive: currentOrder.status ==
+                                          OrderQueueStatus.delivered,
+                                      activeColor: const Color(0xFF2E7D32),
+                                      onPressed: () async {
+                                        await controller.updateDeliveryStatus(
+                                          currentOrder,
+                                          OrderQueueStatus.delivered,
+                                        );
+                                        if (context.mounted) {
+                                          Navigator.of(context).pop();
+                                        }
+                                      },
+                                    ),
+                                  ),
                                 ],
                               ),
-                              if (item.modifierLabels.isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 6,
-                                  children: item.modifierLabels
-                                      .map(
-                                        (modifier) => Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFFFEFE3),
-                                            borderRadius: BorderRadius.circular(
-                                              999,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            modifier,
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: Color(0xFF8A5F3D),
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                      .toList(growable: false),
+                            ],
+                            const Divider(height: 18, color: Color(0xFFBBF7D0)),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.location_on_outlined,
+                                  size: 16,
+                                  color: Color(0xFF166534),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Delivery Destination',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: const Color(0xFF166534),
+                                      ),
                                 ),
                               ],
+                            ),
+                            if (currentOrder.deliveryAddress != null &&
+                                currentOrder.deliveryAddress!.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                currentOrder.deliveryAddress!,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF1F2937),
+                                ),
+                              ),
                             ],
-                          ),
+                            if (currentOrder.deliveryLandmark != null &&
+                                currentOrder.deliveryLandmark!.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              RichText(
+                                text: TextSpan(
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF374151),
+                                  ),
+                                  children: [
+                                    const TextSpan(
+                                      text: 'Landmark: ',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF1F2937),
+                                      ),
+                                    ),
+                                    TextSpan(text: currentOrder.deliveryLandmark!),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            if (currentOrder.deliveryNotes != null &&
+                                currentOrder.deliveryNotes!.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              RichText(
+                                text: TextSpan(
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF374151),
+                                  ),
+                                  children: [
+                                    const TextSpan(
+                                      text: 'Rider Note: ',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF1F2937),
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: currentOrder.deliveryNotes!,
+                                      style: const TextStyle(
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Text(
-                      'Total',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFCF8F2),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0x1A9A7A60)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ...currentOrder.items.map(
+                            (item) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          item.productName,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleSmall
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${item.quantity}x',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF7B513B),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(_money(item.lineTotal)),
+                                    ],
+                                  ),
+                                  if (item.modifierLabels.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: item.modifierLabels
+                                          .map(
+                                            (modifier) => Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFFEFE3),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                              child: Text(
+                                                modifier,
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: Color(0xFF8A5F3D),
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                          .toList(growable: false),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const Spacer(),
-                    Text(
-                      _money(order.subtotal),
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
+                    const SizedBox(height: 12),
+                    if (currentOrder.deliveryFee > 0) ...[
+                      Row(
+                        children: [
+                          const Text(
+                            'Items Subtotal',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF7B513B),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _money(currentOrder.subtotal),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF7B513B),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Text(
+                            'Delivery Fee',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF7B513B),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _money(currentOrder.deliveryFee),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF7B513B),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 16),
+                    ],
+                    Row(
+                      children: [
+                        Text(
+                          'Total',
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          _money(currentOrder.total),
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF6B4423),
+                                  ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
+            actions: [
+              if (onContinue != null)
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF8B4513),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    onContinue();
+                  },
+                  icon: const Icon(Icons.point_of_sale, size: 16),
+                  label: const Text('Load in Register'),
+                ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
       );
     },
   );
@@ -4058,6 +4569,163 @@ class _InfoChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DeliveryStepTracker extends StatelessWidget {
+  const _DeliveryStepTracker({required this.currentStatus});
+
+  final OrderQueueStatus currentStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = const [
+      (OrderQueueStatus.pending, 'Received'),
+      (OrderQueueStatus.preparing, 'Preparing'),
+      (OrderQueueStatus.onTheWay, 'OTW'),
+      (OrderQueueStatus.delivered, 'Delivered'),
+    ];
+
+    int activeIdx;
+    switch (currentStatus) {
+      case OrderQueueStatus.pending:
+      case OrderQueueStatus.held:
+      case OrderQueueStatus.awaitingPayment:
+        activeIdx = 0;
+        break;
+      case OrderQueueStatus.preparing:
+        activeIdx = 1;
+        break;
+      case OrderQueueStatus.onTheWay:
+        activeIdx = 2;
+        break;
+      case OrderQueueStatus.delivered:
+        activeIdx = 3;
+        break;
+    }
+
+    return Row(
+      children: List.generate(steps.length * 2 - 1, (i) {
+        if (i.isOdd) {
+          final lineIdx = i ~/ 2;
+          final isCompleted = lineIdx < activeIdx;
+          return Expanded(
+            child: Container(
+              height: 2.5,
+              color: isCompleted
+                  ? const Color(0xFF166534)
+                  : const Color(0xFFD1D5DB),
+            ),
+          );
+        }
+
+        final stepIdx = i ~/ 2;
+        final isReached = stepIdx <= activeIdx;
+        final isCurrent = stepIdx == activeIdx;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isReached
+                    ? const Color(0xFF166534)
+                    : const Color(0xFFF3F4F6),
+                border: Border.all(
+                  color: isCurrent
+                      ? const Color(0xFF86EFAC)
+                      : (isReached
+                          ? const Color(0xFF166534)
+                          : Colors.transparent),
+                  width: 2,
+                ),
+              ),
+              child: Icon(
+                isReached ? Icons.check : Icons.circle,
+                size: isReached ? 14 : 6,
+                color: isReached ? Colors.white : const Color(0xFF9CA3AF),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              steps[stepIdx].$2,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isReached ? FontWeight.w700 : FontWeight.w500,
+                color: isReached
+                    ? const Color(0xFF166534)
+                    : const Color(0xFF6B7280),
+              ),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+}
+
+class _StatusActionButton extends StatelessWidget {
+  const _StatusActionButton({
+    required this.label,
+    required this.icon,
+    required this.isActive,
+    required this.activeColor,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool isActive;
+  final Color activeColor;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: isActive ? activeColor : Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      elevation: 0,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isActive ? activeColor : const Color(0xFFD1D5DB),
+              width: isActive ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: isActive ? Colors.white : const Color(0xFF374151),
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: isActive ? Colors.white : const Color(0xFF374151),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -4146,6 +4814,8 @@ String _queueStatusText(OrderQueueStatus status) {
   return switch (status) {
     OrderQueueStatus.pending => 'Pending',
     OrderQueueStatus.preparing => 'Preparing',
+    OrderQueueStatus.onTheWay => 'On the Way',
+    OrderQueueStatus.delivered => 'Delivered',
     OrderQueueStatus.held => 'Held',
     OrderQueueStatus.awaitingPayment => 'Awaiting Payment',
   };

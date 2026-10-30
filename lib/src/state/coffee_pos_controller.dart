@@ -142,6 +142,9 @@ class CoffeePosController extends ChangeNotifier {
   DatabaseReference get _sharedOrdersReference =>
       FirebaseDatabase.instance.ref('store/orders');
 
+  DatabaseReference get _customerOrdersReference =>
+      FirebaseDatabase.instance.ref('customer_orders');
+
   bool get isLoading => _isLoading;
   bool get isCheckingOut => _isCheckingOut;
   Role get role => isDemo ? Role.admin : _role;
@@ -1318,6 +1321,108 @@ class CoffeePosController extends ChangeNotifier {
       if (order.id == id) return order;
     }
     return null;
+  }
+
+  Future<bool> updateDeliveryStatus(
+    OrderQueueRecord order,
+    OrderQueueStatus newStatus,
+  ) async {
+    final queueIndex = _activeOrders.indexWhere((item) => item.id == order.id);
+    if (queueIndex < 0) return false;
+
+    final updatedOrder = _activeOrders[queueIndex].copyWith(status: newStatus);
+
+    if (newStatus == OrderQueueStatus.delivered) {
+      _activeOrders.removeAt(queueIndex);
+      final txId = OrderLifecycle.transactionId(order.id);
+      final existsInRecent = _recentOrders.any((r) => r.id == txId);
+      if (!existsInRecent) {
+        final paymentType =
+            (order.paymentMethod?.toLowerCase().contains('gcash') ?? false)
+                ? PaymentType.eWallet
+                : PaymentType.cash;
+        final record = OrderRecord(
+          id: txId,
+          sequence: order.sequence,
+          orderNumber: order.displayOrderNumber,
+          status: OrderStatus.paid,
+          orderType: order.orderType,
+          paymentType: paymentType,
+          cashierName: _cashierName,
+          createdAt: order.createdAt,
+          subtotal: order.subtotal,
+          discount: 0,
+          tax: 0,
+          serviceCharge: 0,
+          total: order.total,
+          cashReceived: order.total,
+          change: 0,
+          items: order.items,
+          vatEnabled: false,
+        );
+        _recentOrders = [record, ..._recentOrders];
+        _todaySales += order.total;
+      }
+    } else {
+      _activeOrders[queueIndex] = updatedOrder;
+    }
+
+    notifyListeners();
+    unawaited(_saveCurrentStateSnapshot());
+
+    if (Firebase.apps.isNotEmpty && _currentUserId != null) {
+      if (newStatus == OrderQueueStatus.delivered) {
+        await _removeSharedActiveOrder(order.id);
+        await _saveSharedOrders();
+      } else {
+        await _saveSharedOrders();
+      }
+
+      final orderNumber = order.displayOrderNumber;
+      if (orderNumber.isNotEmpty) {
+        final String lunanStatusStr = switch (newStatus) {
+          OrderQueueStatus.preparing => 'preparing',
+          OrderQueueStatus.onTheWay => 'onTheWay',
+          OrderQueueStatus.delivered => 'delivered',
+          OrderQueueStatus.pending => 'received',
+          _ => newStatus.name,
+        };
+
+        final updatePayload = {
+          'status': lunanStatusStr,
+          'updatedAt': DateTime.now().toIso8601String(),
+        };
+
+        try {
+          // 1. Update under orderNumber (e.g. LN-20261030-001)
+          await _customerOrdersReference.child(orderNumber).update(updatePayload);
+
+          // 2. Also update under trackingToken (e.g. trk_nlkqmtuanpkx9od92f0x2oio756ahrgx)
+          String? tokenToUpdate = order.trackingToken;
+          if (tokenToUpdate == null || tokenToUpdate.isEmpty) {
+            final snap = await _customerOrdersReference
+                .child(orderNumber)
+                .child('trackingToken')
+                .get()
+                .timeout(const Duration(seconds: 2));
+            if (snap.exists && snap.value != null) {
+              tokenToUpdate = snap.value.toString();
+            }
+          }
+          if (tokenToUpdate != null &&
+              tokenToUpdate.isNotEmpty &&
+              tokenToUpdate != orderNumber) {
+            await _customerOrdersReference
+                .child(tokenToUpdate)
+                .update(updatePayload);
+          }
+        } catch (e) {
+          debugPrint('[CoffeePosController] Error syncing customer_orders: $e');
+        }
+      }
+    }
+
+    return true;
   }
 
   Future<bool> completeOrder(OrderQueueRecord order) => changeOrderStatus(

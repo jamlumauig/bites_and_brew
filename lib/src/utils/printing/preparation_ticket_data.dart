@@ -87,6 +87,15 @@ class PreparationTicketData {
     String note = '',
     String printerName = '',
   }) {
+    final effectiveNote = note.isNotEmpty
+        ? note
+        : [
+            if (queue.deliveryAddress != null && queue.deliveryAddress!.isNotEmpty)
+              'Delivery to: ${queue.deliveryAddress}',
+            if (queue.deliveryNotes != null && queue.deliveryNotes!.isNotEmpty)
+              'Notes: ${queue.deliveryNotes}',
+          ].join(' | ');
+
     return PreparationTicketData(
       orderId: queue.id,
       sequence: queue.sequence,
@@ -97,7 +106,7 @@ class PreparationTicketData {
           .map(PreparationTicketItem.fromSnapshot)
           .toList(growable: false),
       customerName: queue.customerName,
-      note: note,
+      note: effectiveNote,
       printerName: printerName,
     );
   }
